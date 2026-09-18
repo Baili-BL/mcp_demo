@@ -81,10 +81,8 @@ async function copyInvite(u) {
   await copyText(inviteUrl(u.inviteToken))
   Message.success('注册链接已复制')
 }
-function openRegister(u) {
-  if (!u.inviteToken) return
-  inviteVisible.value = false
-  location.hash = 'register?t=' + encodeURIComponent(u.inviteToken)
+function registerHref(u) {
+  return u?.inviteToken ? inviteUrl(u.inviteToken) : undefined
 }
 function submitApply() {
   const name = apply.name.trim()
@@ -199,7 +197,14 @@ onDeactivated(() => {
             <template #cell="{ record }">
               <a-button v-if="record.status === '待审批'" type="text" size="mini" @click="approve(record)">通过</a-button>
               <a-button v-if="record.status === '待注册'" type="text" size="mini" @click="copyInvite(record)">复制链接</a-button>
-              <a-button v-if="record.status === '待注册'" type="text" size="mini" @click="openRegister(record)">打开注册</a-button>
+              <a-button
+                v-if="record.status === '待注册'"
+                type="text"
+                size="mini"
+                :href="registerHref(record)"
+                target="_blank"
+                rel="noopener noreferrer"
+              >打开注册</a-button>
               <a-button v-if="record.status === '正常'" type="text" size="mini" @click="gotoIssue(record)">去签发</a-button>
               <a-button v-if="record.status !== '停用'" type="text" status="danger" size="mini" @click="disable(record)">停用</a-button>
             </template>
@@ -252,10 +257,10 @@ onDeactivated(() => {
           </button>
         </div>
         <a-form :model="invite" layout="vertical" style="margin-top:16px">
-          <a-form-item :label="invite.kind === 'customer' ? '客户公司' : '所属团队'">
+          <a-form-item :label="invite.kind === 'customer' ? '客户公司' : '所属团队'" required>
             <a-input v-model="invite.org" :placeholder="invite.kind === 'customer' ? '如 某铜业集团' : '如 数智中心'" />
           </a-form-item>
-          <a-form-item v-if="invite.kind === 'staff'" label="预置角色">
+          <a-form-item v-if="invite.kind === 'staff'" label="预置角色" required>
             <a-select v-model="invite.role">
               <a-option v-for="r in staffRoles" :key="r.value" :value="r.value">{{ r.value }}</a-option>
             </a-select>
@@ -276,7 +281,7 @@ onDeactivated(() => {
           <a-button type="primary" @click="copyLast">
             <template #icon><icon-copy /></template>复制链接
           </a-button>
-          <a-button @click="openRegister(lastInvite?.user || {})">打开注册页</a-button>
+          <a-button :href="lastInvite?.url" target="_blank" rel="noopener noreferrer">打开注册页</a-button>
         </a-space>
         <p class="muted" style="margin-top:12px">对方提交姓名、手机号、登录邮箱后，状态变为「正常」，再在「接入与密钥」签发。</p>
       </template>
@@ -284,10 +289,10 @@ onDeactivated(() => {
 
     <a-modal v-model:visible="applyVisible" title="内部员工自助申请" :width="480" @before-ok="submitApply" ok-text="提交申请" unmount-on-close>
       <a-form :model="apply" layout="vertical">
-        <a-form-item label="姓名"><a-input v-model="apply.name" /></a-form-item>
-        <a-form-item label="手机号"><a-input v-model="apply.phone" placeholder="11 位手机号" maxlength="11" /></a-form-item>
-        <a-form-item label="登录邮箱"><a-input v-model="apply.email" placeholder="企业邮箱" /></a-form-item>
-        <a-form-item label="申请角色">
+        <a-form-item label="姓名" required><a-input v-model="apply.name" /></a-form-item>
+        <a-form-item label="手机号" required><a-input v-model="apply.phone" placeholder="11 位手机号" maxlength="11" /></a-form-item>
+        <a-form-item label="登录邮箱" required><a-input v-model="apply.email" placeholder="企业邮箱" /></a-form-item>
+        <a-form-item label="申请角色" required>
           <a-select v-model="apply.role">
             <a-option v-for="r in staffRoles" :key="r.value" :value="r.value">{{ r.value }}</a-option>
           </a-select>

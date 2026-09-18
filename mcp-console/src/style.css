@@ -17,6 +17,21 @@ body {
 .muted { color: var(--color-text-3); font-size: 12px; }
 .hint { margin: 8px 0 0; font-size: 12px; color: var(--color-text-3); }
 
+.arco-form-item-label-required-symbol {
+  color: #f53f3f !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  margin-right: 6px !important;
+}
+.arco-form-item-label-required-symbol svg {
+  display: inline-block;
+  transform: none !important;
+  width: 12px !important;
+  height: 12px !important;
+  color: #f53f3f !important;
+}
+
 .app-shell {
   height: 100vh;
   display: flex;
@@ -224,6 +239,7 @@ body {
   cursor: pointer;
   color: inherit;
 }
+.topbar-brand.static { cursor: default; }
 .topbar-brand .mark { width: 28px; height: 28px; display: block; }
 .topbar-brand .name { font-size: 15px; font-weight: 600; color: rgb(12, 13, 14); white-space: nowrap; }
 .top-tabs {
@@ -297,6 +313,13 @@ body {
   background: #faf9f7;
 }
 .page-panel.flush::before { display: none; }
+.page-panel.reg-flush { overflow: auto; -webkit-overflow-scrolling: touch; }
+.app-shell.is-register { background: #faf9f7; }
+.app-shell.is-register .app-topbar {
+  background: #faf9f7;
+  padding-top: env(safe-area-inset-top, 0px);
+  height: calc(56px + env(safe-area-inset-top, 0px));
+}
 .page-panel {
   position: relative;
   background: #fff;
@@ -585,6 +608,23 @@ body {
   .content-wrap { padding: 16px; }
   .user-name { display: none; }
   .header-right .arco-input-search { width: 160px !important; }
+}
+@media (max-width: 640px) {
+  .app-shell.is-register { background: #fff; }
+  .app-shell.is-register .app-topbar {
+    background: #fff;
+    border-bottom: 1px solid #eceae4;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .app-shell.is-register .app-body {
+    height: calc(100dvh - 56px - env(safe-area-inset-top, 0px));
+  }
+  .app-shell.is-register .content-wrap.full { padding: 0; }
+  .app-shell.is-register .page-panel.flush {
+    border-radius: 0;
+    background: #fff;
+  }
 }
 
 .guide-cards {

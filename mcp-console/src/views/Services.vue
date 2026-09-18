@@ -427,10 +427,10 @@ function modeName(id) {
     <a-modal v-model:visible="svcVisible" title="创建 MCP 服务" :width="620" @ok="submitSvc" :ok-text="'创建'" unmount-on-close>
       <a-form :model="form" layout="vertical">
         <a-row :gutter="16">
-          <a-col :span="12"><a-form-item label="服务名称 *" field="name"><a-input v-model="form.name" placeholder="如：test-my-mcp、CRM 查询服务" /></a-form-item></a-col>
-          <a-col :span="12"><a-form-item label="服务标识 *（kebab-case）" field="code"><a-input v-model="form.code" placeholder="test-my-mcp" class="mono" /></a-form-item></a-col>
+          <a-col :span="12"><a-form-item label="服务名称" field="name" required><a-input v-model="form.name" placeholder="如：test-my-mcp、CRM 查询服务" /></a-form-item></a-col>
+          <a-col :span="12"><a-form-item label="服务标识（kebab-case）" field="code" required><a-input v-model="form.code" placeholder="test-my-mcp" class="mono" /></a-form-item></a-col>
           <a-col :span="12">
-            <a-form-item label="传输协议 *" field="proto">
+            <a-form-item label="传输协议" field="proto" required>
               <a-select v-model="form.proto">
                 <a-option>Streamable HTTP</a-option>
                 <a-option>SSE</a-option>
@@ -439,7 +439,7 @@ function modeName(id) {
           </a-col>
           <a-col :span="12"><a-form-item label="版本" field="version"><a-input v-model="form.version" /></a-form-item></a-col>
         </a-row>
-        <a-form-item label="MCP 端点 URL *" field="endpoint">
+        <a-form-item label="MCP 端点 URL" field="endpoint" required>
           <a-input v-model="form.endpoint" placeholder="https://mcp.futures-data.cn/test/mcp" class="mono" />
         </a-form-item>
         <a-form-item label="所属系统（可选）" extra="分类标签，可多选、可直接输入新建。同花顺 / SMM / 钢联 / CRM 都只是标签，后面加数仓、OA 同样登记。">
@@ -490,21 +490,21 @@ function modeName(id) {
     <a-modal v-model:visible="setVisible" title="创建 MCP 工具集" :width="760" @ok="submitSet" :ok-text="'创建'" unmount-on-close>
       <a-form :model="setForm" layout="vertical">
         <a-typography-title :heading="6">基本信息</a-typography-title>
-        <a-form-item label="MCP 工具集名称 *" extra="名称创建后不可修改">
+        <a-form-item label="MCP 工具集名称" required extra="名称创建后不可修改">
           <a-input v-model="setForm.name" class="mono" />
         </a-form-item>
-        <a-form-item label="访问路径 *">
+        <a-form-item label="访问路径" required>
           <a-input v-model="setForm.path" class="mono" />
         </a-form-item>
         <a-typography-title :heading="6">认证信息</a-typography-title>
-        <a-form-item label="入站身份认证 *">
+        <a-form-item label="入站身份认证" required>
           <a-radio-group v-model="setForm.auth" type="button">
             <a-radio value="apikey">API Key</a-radio>
             <a-radio value="oauth">OAuth JWT</a-radio>
           </a-radio-group>
         </a-form-item>
         <a-alert v-if="setForm.auth === 'oauth'" type="warning" style="margin-bottom:12px">OAuth 2.1 入站按官方 MCP Authorization 规划；当前网关仍用「接入与密钥」中的 Bearer API Key。</a-alert>
-        <a-form-item label="密钥来源 *">
+        <a-form-item label="密钥来源" required>
           <a-radio-group v-model="setForm.keyMode" type="button">
             <a-radio value="issue">签发新密钥</a-radio>
             <a-radio value="bind">绑定已有密钥</a-radio>
@@ -547,7 +547,7 @@ function modeName(id) {
             </a-col>
           </a-row>
         </template>
-        <a-form-item v-else label="选择密钥 *" extra="同一把 Key 可授权多个工具集，配额与到期在接入与密钥中统一管理。">
+        <a-form-item v-else label="选择密钥" required extra="同一把 Key 可授权多个工具集，配额与到期在接入与密钥中统一管理。">
           <a-select
             v-model="setForm.bindIds"
             multiple
@@ -564,7 +564,7 @@ function modeName(id) {
           </a-select>
         </a-form-item>
         <a-typography-title :heading="6">工具管理</a-typography-title>
-        <a-form-item label="调用模式 *">
+        <a-form-item label="调用模式" required>
           <div class="mode-cards">
             <div
               v-for="m in CALL_MODES"

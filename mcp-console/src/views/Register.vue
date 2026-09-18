@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { findInvite, kindMeta, registerByInvite } from '../store'
+import { findInvite, registerByInvite } from '../store'
 
 defineOptions({ name: 'Register' })
 
@@ -25,13 +25,12 @@ const invalid = computed(() => {
   }
   return ''
 })
-const kind = computed(() => kindMeta(invite.value?.kind))
 
 function submit() {
   const res = registerByInvite(token.value, form)
   if (!res.ok) { Message.warning(res.msg); return }
   done.value = true
-  Message.success('注册成功，可用手机号或登录邮箱进入管理台')
+  Message.success('注册成功')
 }
 
 onMounted(() => {
@@ -49,32 +48,47 @@ onBeforeUnmount(() => {
       <p class="kicker">MCP 账号注册</p>
       <template v-if="done">
         <h1>注册完成</h1>
-        <p class="lede">{{ form.name }}，你的{{ kind.label }}账号已开通。登录邮箱 {{ form.email }}，手机 {{ form.phone }}。</p>
-        <a-alert style="margin-top:16px">管理员会在「接入与密钥」把 API Key 挂到你的账号。外部客户默认 90 天、低配额。</a-alert>
-        <a-button type="primary" style="margin-top:20px" href="#users">返回用户管理</a-button>
+        <p class="lede">{{ form.name }}，账号已开通。可用登录邮箱 {{ form.email }} 或手机 {{ form.phone }} 进入。</p>
+        <p class="done-tip">你可以关闭此页面。管理员会在接入后为你签发 API Key。</p>
       </template>
       <template v-else-if="invalid">
         <h1>无法注册</h1>
         <p class="lede">{{ invalid }}</p>
       </template>
       <template v-else>
-        <a-tag :color="kind.tag">{{ kind.label }}</a-tag>
-        <h1>填写手机与登录邮箱</h1>
-        <p class="lede">
-          {{ invite.kind === 'customer' ? (invite.org || '外部客户') : (invite.org || '内部员工') }}
-          邀请你开通 MCP 账号。链接 7 天内有效。
-        </p>
-        <a-form :model="form" layout="vertical" style="margin-top:20px" @submit.prevent="submit">
+        <h1>填写注册信息</h1>
+        <p class="lede">请填写以下信息完成开通。链接 7 天内有效。</p>
+        <a-form :model="form" layout="vertical" class="reg-form" @submit.prevent="submit">
           <a-form-item label="姓名" required>
-            <a-input v-model="form.name" :placeholder="invite.nameHint || '真实姓名'" />
+            <a-input
+              v-model="form.name"
+              :placeholder="invite.nameHint || '真实姓名'"
+              autocomplete="name"
+              size="large"
+            />
           </a-form-item>
           <a-form-item label="手机号" required extra="用于登录与找回">
-            <a-input v-model="form.phone" placeholder="11 位手机号" maxlength="11" />
+            <a-input
+              v-model="form.phone"
+              placeholder="11 位手机号"
+              maxlength="11"
+              inputmode="numeric"
+              autocomplete="tel"
+              size="large"
+            />
           </a-form-item>
-          <a-form-item :label="invite.kind === 'staff' ? '登录邮箱（企业邮箱）' : '登录邮箱'" required extra="登录账号，不是联系备用邮箱">
-            <a-input v-model="form.email" placeholder="name@example.com" />
+          <a-form-item label="登录邮箱" required extra="登录账号，不是联系备用邮箱">
+            <a-input
+              v-model="form.email"
+              type="email"
+              placeholder="name@example.com"
+              autocomplete="email"
+              size="large"
+            />
           </a-form-item>
-          <a-button type="primary" long size="large" @click="submit">提交注册</a-button>
+          <a-button type="primary" html-type="submit" long size="large" class="reg-submit" @click="submit">
+            提交注册
+          </a-button>
         </a-form>
       </template>
     </div>
@@ -83,11 +97,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .reg {
-  min-height: calc(100vh - 72px);
+  min-height: 100%;
   display: grid;
   place-items: start center;
-  padding: 48px 20px 80px;
+  padding: 40px 20px 64px;
   background: #faf9f7;
+  box-sizing: border-box;
 }
 .reg-card {
   width: min(480px, 100%);
@@ -95,6 +110,7 @@ onBeforeUnmount(() => {
   border: 1px solid #eceae4;
   border-radius: 16px;
   padding: 36px 32px 40px;
+  box-sizing: border-box;
 }
 .kicker {
   font-size: 12px;
@@ -109,6 +125,38 @@ h1 {
   font-weight: 600;
   letter-spacing: -0.02em;
   margin: 10px 0 8px;
+  line-height: 1.25;
 }
 .lede { color: var(--color-text-2); font-size: 14px; line-height: 1.6; }
+.done-tip { margin: 16px 0 0; font-size: 13px; color: var(--color-text-3); line-height: 1.6; }
+.reg-form { margin-top: 20px; }
+.reg-submit { margin-top: 4px; height: 44px; }
+
+@media (max-width: 640px) {
+  .reg {
+    padding: 0;
+    place-items: stretch;
+    background: #fff;
+    min-height: 100%;
+  }
+  .reg-card {
+    width: 100%;
+    min-height: 100%;
+    border: none;
+    border-radius: 0;
+    padding: 20px 20px calc(28px + env(safe-area-inset-bottom, 0px));
+  }
+  .kicker { display: none; }
+  h1 { font-size: 22px; margin-top: 4px; }
+  .lede { font-size: 14px; }
+  .reg-submit { height: 48px; font-size: 16px; }
+  :deep(.arco-input-wrapper),
+  :deep(.arco-input-wrapper .arco-input),
+  :deep(.arco-input) {
+    font-size: 16px !important;
+    min-height: 44px;
+  }
+  :deep(.arco-form-item) { margin-bottom: 18px; }
+  :deep(.arco-form-item-label-col) { margin-bottom: 6px; }
+}
 </style>

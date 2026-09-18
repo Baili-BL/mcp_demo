@@ -209,10 +209,10 @@ function submitTool() {
     <a-modal v-model:visible="toolVisible" title="注册新工具" :width="580" @ok="submitTool" :ok-text="'注册'" unmount-on-close>
       <a-form :model="form" layout="vertical">
         <a-row :gutter="16">
-          <a-col :span="12"><a-form-item label="工具名称 *（snake_case）"><a-input v-model="form.name" placeholder="get_warehouse_receipt" /></a-form-item></a-col>
-          <a-col :span="12"><a-form-item label="中文名称 *"><a-input v-model="form.cn" placeholder="如：仓单日报查询" /></a-form-item></a-col>
+          <a-col :span="12"><a-form-item label="工具名称（snake_case）" required><a-input v-model="form.name" placeholder="get_warehouse_receipt" /></a-form-item></a-col>
+          <a-col :span="12"><a-form-item label="中文名称" required><a-input v-model="form.cn" placeholder="如：仓单日报查询" /></a-form-item></a-col>
           <a-col :span="12">
-            <a-form-item label="所属服务 *">
+            <a-form-item label="所属服务" required>
               <a-select v-model="form.svc">
                 <a-option v-for="s in store.services" :key="s.id" :value="s.id">{{ s.name }}（{{ s.code }}）</a-option>
               </a-select>

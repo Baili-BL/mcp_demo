@@ -132,18 +132,22 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'is-register': shell === 'register' }">
     <header class="app-topbar">
-      <button type="button" class="topbar-brand" @click="openConsole">
+      <button v-if="shell !== 'register'" type="button" class="topbar-brand" @click="openConsole">
         <McpMark class="mark" />
         <span class="name">MCP 服务管理台</span>
       </button>
+      <div v-else class="topbar-brand static">
+        <McpMark class="mark" />
+        <span class="name">MCP</span>
+      </div>
       <nav v-if="shell !== 'register'" class="top-tabs">
         <button type="button" :class="{ on: shell === 'console' }" @click="openConsole">控制台</button>
         <button type="button" :class="{ on: shell === 'docs' }" @click="showView('docs')">文档</button>
         <button type="button" :class="{ on: shell === 'sequence' }" @click="showView('sequence')">时序图</button>
       </nav>
-      <div v-else class="reg-top-hint">账号注册 · 手机号 + 登录邮箱</div>
+      <div v-else class="reg-top-hint">账号注册</div>
       <div class="header-right">
         <a-input-search
           v-if="shell === 'console'"
@@ -222,7 +226,7 @@ onBeforeUnmount(() => {
       </a-layout-sider>
 
       <a-layout-content class="content-wrap" :class="{ full: shell !== 'console' }">
-        <div class="page-panel" :class="{ flush: shell === 'docs' || shell === 'register' }">
+        <div class="page-panel" :class="{ flush: shell === 'docs' || shell === 'register', 'reg-flush': shell === 'register' }">
           <keep-alive exclude="Register">
             <component :is="views[cur]" @goto="showView" />
           </keep-alive>

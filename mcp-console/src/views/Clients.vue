@@ -321,7 +321,7 @@ watch(() => store.clientFlt.openIssue, (open) => {
       <a-form :model="form" layout="vertical">
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="归属用户 *" extra="停用该账号时，名下 Key 全部失效">
+            <a-form-item label="归属用户" required extra="停用该账号时，名下 Key 全部失效">
               <a-select v-model="form.userId" allow-search placeholder="选择已开通账号">
                 <a-option v-for="u in activeUsers" :key="u.id" :value="u.id">{{ u.name }} · {{ u.role }}</a-option>
               </a-select>
@@ -359,7 +359,7 @@ watch(() => store.clientFlt.openIssue, (open) => {
             </a-form-item>
           </a-col>
           <a-col :span="24">
-            <a-form-item label="授权工具集 *" extra="该 Key 只能调用勾选的工具集端点。可多选；配额与到期在本页统一管理。">
+            <a-form-item label="授权工具集" required extra="该 Key 只能调用勾选的工具集端点。可多选；配额与到期在本页统一管理。">
               <a-select v-model="form.toolsetIds" multiple allow-search placeholder="选择 MCP 工具集">
                 <a-option v-for="ts in store.toolsets" :key="ts.id" :value="ts.id">{{ ts.name }}</a-option>
               </a-select>

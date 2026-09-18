@@ -22,9 +22,6 @@ const stColor = (st) => (st === '未处理' ? 'red' : st === '已确认' ? 'arco
         <h2>概览</h2>
         <div class="desc">MCP 数据面运行全貌：服务健康、工具目录、调用与告警</div>
       </div>
-      <a-button type="outline" @click="emit('goto', 'sequence')">
-        <template #icon><icon-mind-mapping /></template>时序图
-      </a-button>
     </div>
     <a-row :gutter="16" style="margin-bottom: 8px">
       <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
