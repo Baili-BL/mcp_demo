@@ -1,7 +1,7 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { store, toolsetEndpoint, findServiceByEndpoint, discoverToolsForService } from '../store'
+import { store, toolsetEndpoint, findServiceByEndpoint, discoverToolsForService, keyForEndpoint } from '../store'
 
 const visible = computed({
   get: () => store.playground.visible,
@@ -17,10 +17,14 @@ const connected = ref(false)
 const connecting = ref(false)
 const listed = ref([])
 const selected = ref(null)
-const args = reactive({})
+const inText = ref('{\n  "arguments": {}\n}')
+const outText = ref('')
 const testing = ref(false)
 const result = ref(null)
 const resultOk = ref(false)
+const batching = ref(false)
+const batch = ref([])
+let batchTimer = 0
 
 function resetSession() {
   connected.value = false
@@ -29,7 +33,16 @@ function resetSession() {
   testing.value = false
   result.value = null
   resultOk.value = false
-  Object.keys(args).forEach((k) => delete args[k])
+  batching.value = false
+  batch.value = []
+  inText.value = '{\n  "arguments": {}\n}'
+  outText.value = ''
+  if (batchTimer) { clearTimeout(batchTimer); batchTimer = 0 }
+}
+
+function fillBuiltinKey() {
+  if (form.apiKey.trim()) return
+  form.apiKey = keyForEndpoint(form.endpoint)
 }
 
 function resolveTools(endpoint) {
@@ -51,54 +64,233 @@ function resolveTools(endpoint) {
 }
 
 function connect() {
+  return doConnect(false)
+}
+
+function doConnect(silent) {
   if (!/^https?:\/\/.+/.test(form.endpoint.trim())) {
     Message.warning('请填写有效的 MCP 域名 / 端点 URL')
-    return
+    return false
   }
+  fillBuiltinKey()
   if (!form.apiKey.trim()) {
     Message.warning('请填写入站 API Key')
-    return
+    return false
   }
   connecting.value = true
-  setTimeout(() => {
-    connecting.value = false
-    let tools = resolveTools(form.endpoint)
-    if (!tools.length) {
-      const svc = findServiceByEndpoint(form.endpoint)
-      if (svc) tools = discoverToolsForService(svc).filter((t) => t.on)
+  let tools = resolveTools(form.endpoint)
+  if (!tools.length) {
+    const svc = findServiceByEndpoint(form.endpoint)
+    if (svc) tools = discoverToolsForService(svc).filter((t) => t.on)
+  }
+  connecting.value = false
+  if (!tools.length) {
+    connected.value = false
+    Message.error('该端点尚未登记工具。请先在 MCP 中心对服务执行「探测工具」，或到工具目录手动登记。')
+    return false
+  }
+  connected.value = true
+  listed.value = tools
+  const preset = store.playground.toolName
+  const hit = tools.find((t) => t.name === preset) || tools[0]
+  pick(hit)
+  if (!silent) Message.success(`连接成功，tools/list 返回 ${tools.length} 个工具`)
+  return true
+}
+
+function sampleArgs(t) {
+  const props = t.schema?.properties || {}
+  const out = {}
+  Object.entries(props).forEach(([k, spec]) => {
+    if (spec.default != null) { out[k] = spec.default; return }
+    if (spec.enum?.length) { out[k] = spec.enum[0]; return }
+    if (k === 'variety') { out[k] = 'CU'; return }
+    if (k === 'industry') { out[k] = '电解铝'; return }
+    if (k === 'query') { out[k] = '铜库存'; return }
+    if (k === 'region') { out[k] = '华东'; return }
+    if (k === 'inv_type') { out[k] = 'social'; return }
+    if (k === 'dataset_id') { out[k] = 'dw.ads_variety_pnl_d'; return }
+    if (k === 'team') { out[k] = '全部'; return }
+    if (k === 'start_date') { out[k] = '2026-09-01'; return }
+    if (k === 'end_date') { out[k] = '2026-09-17'; return }
+    if (spec.type === 'integer' || spec.type === 'number') { out[k] = 0; return }
+    if (spec.type === 'boolean') { out[k] = false; return }
+    if (spec.type === 'array') { out[k] = []; return }
+    if (spec.type === 'object') { out[k] = {}; return }
+    out[k] = ''
+  })
+  return out
+}
+
+function randomFailCase(t) {
+  const svc = store.services.find((s) => s.id === t.svc)
+  const src = svc?.sources?.[0] || '上游'
+  const hist = (t.errs || []).filter((e) => e.code && e.code !== '—')
+  if (hist.length && Math.random() < 0.45) {
+    const e = hist[Math.floor(Math.random() * hist.length)]
+    return { code: e.code, message: e.msg }
+  }
+  const cases = [
+    { code: 'MCP_ERR_UPSTREAM_TIMEOUT', message: `${src} 响应超时（>3s），tools/call 中止` },
+    { code: 'MCP_ERR_UPSTREAM_502', message: `${src} 网关返回 502，上游暂时不可用` },
+    { code: 'MCP_ERR_RATE_LIMITED', message: `触发 QPS 限流，请降低 ${t.name} 调用频率后重试` },
+    { code: 'MCP_ERR_SCHEMA_MISMATCH', message: `入参校验失败：${t.name} 字段与 inputSchema 不一致` },
+    { code: 'MCP_ERR_NOT_FOUND', message: `${t.cn} 未查到对应数据，上游返回空集` },
+    { code: 'MCP_ERR_UNAUTHORIZED', message: 'API Key 无效、已停用或未绑定该工具集' },
+    { code: 'MCP_ERR_UPSTREAM_DELAY', message: `${src} 数据同步延迟，暂不可读最新批次` },
+  ]
+  return cases[Math.floor(Math.random() * cases.length)]
+}
+
+function pickFailNames(tools) {
+  const n = tools.length
+  if (!n) return new Set()
+  const degraded = (t) => store.services.find((s) => s.id === t.svc)?.health === 'degraded'
+  let want
+  if (n === 1) want = Math.random() < (degraded(tools[0]) ? 0.7 : 0.4) ? 1 : 0
+  else want = Math.max(1, Math.min(n - 1, Math.ceil(n * (0.28 + Math.random() * 0.22))))
+  const scored = tools.map((t, i) => ({
+    i,
+    w: (degraded(t) ? 2.4 : 1) * (1.15 - (t.sr || 99) / 100) * (0.6 + Math.random()),
+  }))
+  scored.sort((a, b) => b.w - a.w)
+  return new Set(scored.slice(0, want).map((x) => tools[x.i].name))
+}
+
+function failLatency(t, failed) {
+  const base = t.lat || 120
+  if (!failed) return Math.max(40, Math.round(base * (0.7 + Math.random() * 0.5)))
+  return Math.min(4800, Math.round(base * (2.1 + Math.random() * 2.4)))
+}
+
+function applyResult(t, params, fail) {
+  if (fail) {
+    const body = {
+      isError: true,
+      content: [{ type: 'text', text: fail.message }],
+      structuredContent: {
+        code: fail.code,
+        message: fail.message,
+        tool: t.name,
+        retryable: /TIMEOUT|502|RATE|DELAY/.test(fail.code),
+      },
     }
-    if (!tools.length) {
-      connected.value = false
-      Message.error('该端点尚未登记工具。请先在 MCP 中心对服务执行「探测工具」，或到工具目录手动登记。')
-      return
+    result.value = body
+    resultOk.value = false
+    outText.value = JSON.stringify(body, null, 2)
+    return
+  }
+  const data = mockPayload(t, params)
+  const body = {
+    content: [{ type: 'text', text: JSON.stringify(data) }],
+    structuredContent: { result: data },
+  }
+  result.value = body
+  resultOk.value = true
+  outText.value = JSON.stringify(body, null, 2)
+}
+
+function writeInJson(t, params) {
+  inText.value = JSON.stringify({
+    name: t.name,
+    arguments: params || sampleArgs(t),
+  }, null, 2)
+}
+
+function parseInJson() {
+  try {
+    const obj = JSON.parse(inText.value)
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+      Message.warning('入参 JSON 必须是对象')
+      return null
     }
-    connected.value = true
-    listed.value = tools
-    const preset = store.playground.toolName
-    const hit = tools.find((t) => t.name === preset) || tools[0]
-    pick(hit)
-    Message.success(`连接成功，tools/list 返回 ${tools.length} 个工具`)
-  }, 520)
+    const arguments_ = obj.arguments && typeof obj.arguments === 'object' && !Array.isArray(obj.arguments)
+      ? obj.arguments
+      : obj
+    return { name: obj.name || selected.value?.name, arguments: arguments_ }
+  } catch {
+    Message.warning('入参不是合法 JSON，请检查括号与逗号')
+    return null
+  }
 }
 
 function pick(t) {
   selected.value = t
-  Object.keys(args).forEach((k) => delete args[k])
-  const props = t.schema?.properties || {}
-  Object.entries(props).forEach(([k, v]) => {
-    args[k] = v.default != null ? v.default : ''
-  })
-  result.value = null
+  const preset = sampleArgs(t)
+  writeInJson(t, preset)
+  const row = batch.value.find((x) => x.name === t.name)
+  if (row && row.ok != null) applyResult(t, preset, row.ok ? null : row.err)
+  else {
+    result.value = null
+    outText.value = ''
+  }
 }
 
-function fieldsOf(schema) {
-  const props = schema?.properties || {}
-  const required = schema?.required || []
-  return Object.entries(props).map(([key, spec]) => ({
-    key,
-    spec,
-    required: required.includes(key),
-  }))
+function batchOf(name) {
+  return batch.value.find((x) => x.name === name)
+}
+
+function selfTest() {
+  if (batching.value) return
+  if (!doConnect(true)) return
+  const tools = listed.value
+  batching.value = true
+  batch.value = tools.map((t) => ({ name: t.name, cn: t.cn, ok: null, ms: 0, err: null }))
+  const failNames = pickFailNames(tools)
+  let i = 0
+  const tick = () => {
+    if (!store.playground.visible) return
+    if (i >= tools.length) {
+      batching.value = false
+      const ok = batch.value.filter((x) => x.ok).length
+      const fail = batch.value.length - ok
+      if (fail) Message.warning(`系统自测完成：${ok}/${batch.value.length} 个工具可用，${fail} 个失败`)
+      else Message.success(`系统自测完成：${ok}/${batch.value.length} 个工具调用成功`)
+      const firstFail = tools.find((t) => batchOf(t.name)?.ok === false)
+      pick(firstFail || tools[0])
+      return
+    }
+    const t = tools[i]
+    const row = batch.value[i]
+    const fail = failNames.has(t.name) ? randomFailCase(t) : null
+    row.ok = !fail
+    row.err = fail
+    row.ms = failLatency(t, !!fail)
+    i += 1
+    batchTimer = setTimeout(tick, 160)
+  }
+  tick()
+}
+
+function runTest() {
+  if (!selected.value) return
+  const parsed = parseInJson()
+  if (!parsed) return
+  const required = selected.value.schema?.required || []
+  const miss = required.find((k) => parsed.arguments[k] === '' || parsed.arguments[k] == null)
+  if (miss) {
+    Message.warning(`入参 arguments 缺少必填字段 ${miss}`)
+    return
+  }
+  testing.value = true
+  result.value = null
+  outText.value = ''
+  setTimeout(() => {
+    const t = selected.value
+    const svc = store.services.find((s) => s.id === t.svc)
+    const bias = svc?.health === 'degraded' ? 0.55 : 0.32
+    const fail = Math.random() < bias ? randomFailCase(t) : null
+    applyResult(t, parsed.arguments, fail)
+    const row = batchOf(t.name)
+    if (row) {
+      row.ok = !fail
+      row.err = fail
+      row.ms = failLatency(t, !!fail)
+    }
+    testing.value = false
+    if (fail) Message.error(`${fail.code}：${fail.message}`)
+    else Message.success('调用成功')
+  }, 640)
 }
 
 function mockPayload(t, params) {
@@ -162,6 +354,8 @@ function mockPayload(t, params) {
   if (t.name === 'get_crm_pipeline') {
     return {
       team: params.team || '全部',
+      start_date: params.start_date || '2026-09-01',
+      end_date: params.end_date || '2026-09-17',
       stages: [
         { stage: '线索', count: 86, amount: 4200 },
         { stage: '方案', count: 31, amount: 1860 },
@@ -180,28 +374,6 @@ function mockPayload(t, params) {
   return { ok: true, tool: t.name, params, note: '模拟 tools/call 返回（未连接真实上游）' }
 }
 
-function runTest() {
-  if (!selected.value) return
-  const required = selected.value.schema?.required || []
-  const miss = required.find((k) => args[k] === '' || args[k] == null)
-  if (miss) {
-    Message.warning(`请填写必填参数 ${miss}`)
-    return
-  }
-  testing.value = true
-  result.value = null
-  setTimeout(() => {
-    const data = mockPayload(selected.value, { ...args })
-    const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
-    result.value = {
-      content: [{ type: 'text', text }],
-      structuredContent: { result: data },
-    }
-    resultOk.value = true
-    testing.value = false
-  }, 640)
-}
-
 watch(visible, (v) => {
   if (!v) {
     resetSession()
@@ -210,7 +382,9 @@ watch(visible, (v) => {
   form.proto = store.playground.proto || 'Streamable HTTP'
   form.endpoint = store.playground.endpoint || store.services[0]?.endpoint || ''
   form.apiKey = store.playground.apiKey || ''
+  fillBuiltinKey()
   resetSession()
+  nextTick(() => selfTest())
 })
 </script>
 
@@ -234,14 +408,22 @@ watch(visible, (v) => {
             <a-input v-model="form.endpoint" class="mono" placeholder="https://mcp.futures-data.cn/..." />
           </a-form-item>
           <a-form-item label="API Key" required>
-            <a-input-password v-model="form.apiKey" placeholder="Bearer 入站密钥" />
+            <a-input-password v-model="form.apiKey" placeholder="管理台内置密钥，可替换" />
           </a-form-item>
-          <a-button type="primary" long :loading="connecting" @click="connect">连接测试</a-button>
+          <a-space direction="vertical" fill :size="8">
+            <a-button type="primary" long :loading="batching || connecting" @click="selfTest">系统自测</a-button>
+            <a-button long :loading="connecting" @click="connect">仅连接</a-button>
+          </a-space>
         </a-form>
-        <a-alert v-if="connected" type="success" style="margin-top:12px">已建立 Streamable HTTP 会话</a-alert>
+        <a-alert v-if="batching" type="info" style="margin-top:12px">正在对 {{ listed.length }} 个相关工具做连通性检测…</a-alert>
+        <a-alert v-else-if="batch.length && connected" :type="batch.filter(x => x.ok).length === batch.length ? 'success' : 'warning'" style="margin-top:12px">
+          系统自测 {{ batch.filter(x => x.ok).length }}/{{ batch.length }} 个工具可用
+          <template v-if="batch.some(x => x.ok === false)">，失败 {{ batch.filter(x => !x.ok).length }} 个</template>
+        </a-alert>
+        <a-alert v-else-if="connected" type="success" style="margin-top:12px">已建立 Streamable HTTP 会话</a-alert>
       </div>
       <div class="pg-col">
-        <div class="pg-step"><span>Step 2</span> 选择需要调试的工具</div>
+        <div class="pg-step"><span>Step 2</span> 相关工具自测结果</div>
         <template v-if="connected">
           <div
             v-for="t in listed"
@@ -250,43 +432,37 @@ watch(visible, (v) => {
             :class="{ on: selected?.name === t.name }"
             @click="pick(t)"
           >
-            <div class="mono">{{ t.name }}</div>
-            <div class="muted">{{ t.cn }} · {{ t.desc }}</div>
+            <div class="tool-pick-top">
+              <div class="mono">{{ t.name }}</div>
+              <a-tag v-if="batchOf(t.name)?.ok === true" color="green" size="small">通过</a-tag>
+              <a-tag v-else-if="batchOf(t.name)?.ok === false" color="red" size="small">失败</a-tag>
+              <a-tag v-else-if="batching" color="orangered" size="small">检测中</a-tag>
+            </div>
+            <div class="muted">
+              {{ t.cn }}{{ batchOf(t.name)?.ms ? ` · ${batchOf(t.name).ms}ms` : '' }}
+              <template v-if="batchOf(t.name)?.err"> · {{ batchOf(t.name).err.code }}</template>
+            </div>
           </div>
         </template>
-        <a-empty v-else description="请先完成连接测试" />
+        <a-empty v-else description="打开后会用内置密钥自动检测" />
       </div>
       <div class="pg-col">
-        <div class="pg-step"><span>Step 3</span> 输入参数进行调试</div>
+        <div class="pg-step"><span>Step 3</span> JSON 入参 / 出参</div>
         <template v-if="selected">
-          <a-form :model="args" layout="vertical" size="small">
-            <a-form-item
-              v-for="f in fieldsOf(selected.schema)"
-              :key="f.key"
-              :label="f.key"
-              :required="f.required"
-            >
-              <a-select v-if="f.spec.enum" v-model="args[f.key]" allow-clear>
-                <a-option v-for="opt in f.spec.enum" :key="opt" :value="opt">{{ opt }}</a-option>
-              </a-select>
-              <a-input v-else v-model="args[f.key]" :placeholder="f.spec.description || f.key" />
-              <div v-if="f.spec.description" class="hint">{{ f.spec.description }}</div>
-            </a-form-item>
-          </a-form>
+          <div class="pg-json-lab">入参 · tools/call</div>
+          <a-textarea v-model="inText" class="pg-json-in" :auto-size="{ minRows: 8, maxRows: 14 }" />
           <div v-if="resultOk && result" class="pg-ok">
             <icon-check-circle-fill /> 测试成功
           </div>
-          <a-tabs v-if="result" type="line" size="small">
-            <a-tab-pane key="res" title="响应结果">
-              <pre class="schema-pre">{{ JSON.stringify(result, null, 2) }}</pre>
-            </a-tab-pane>
-            <a-tab-pane key="req" title="请求参数">
-              <pre class="schema-pre">{{ JSON.stringify(args, null, 2) }}</pre>
-            </a-tab-pane>
-          </a-tabs>
-          <a-empty v-else-if="!testing" description="测试工具查看结果" />
+          <div v-else-if="result && !resultOk" class="pg-fail">
+            <icon-close-circle-fill /> 测试失败 · {{ result.structuredContent?.code }}
+          </div>
+          <div class="pg-json-lab">出参 · result</div>
+          <pre v-if="outText" class="schema-pre pg-json-out">{{ outText }}</pre>
+          <a-empty v-else-if="batching" description="正在检测该工具…" />
+          <a-empty v-else description="调用后在此展示出参 JSON" />
           <div class="pg-actions">
-            <a-button type="primary" :loading="testing" @click="runTest">测试工具</a-button>
+            <a-button type="primary" :loading="testing || batching" @click="runTest">按入参调用</a-button>
           </div>
         </template>
         <a-empty v-else description="请选择工具" />
@@ -294,3 +470,11 @@ watch(visible, (v) => {
     </div>
   </a-modal>
 </template>
+
+<style scoped>
+.pg-json-in :deep(textarea) {
+  font-family: Menlo, Consolas, ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+</style>

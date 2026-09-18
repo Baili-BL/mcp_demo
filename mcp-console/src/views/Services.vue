@@ -5,9 +5,9 @@ import {
   toolsetEndpoint, platformOptions, rememberPlatforms, ensureSvcMeta,
   toolsOfService, toolsetsUsingService, servicesOfSet, platformsOfSet,
   discoverToolsForService, appendToolsToSet, createToolsetFromService,
-  issueClient, attachToolsetToClients, clientsOfToolset, keyOfToolset,
+  clientsOfToolset, keyOfToolset, keyForEndpoint,
 } from '../store'
-import { addDays, fmtDateTime } from '../utils'
+import { fmt, keyExpireMeta, keyStatus } from '../utils'
 import { computed, reactive, ref } from 'vue'
 
 const emit = defineEmits(['goto'])
@@ -21,26 +21,20 @@ const discSvc = ref(null)
 const discTools = ref([])
 const joinSetId = ref('')
 const currentSet = ref(null)
+const keyDrawerVisible = ref(false)
+const keyDrawerSet = ref(null)
 const form = reactive({
   name: '', code: '', proto: 'Streamable HTTP', version: 'v1.0.0',
   endpoint: '', sources: [], discover: true,
 })
 const setForm = reactive({
   name: 'mcp_toolset_' + Math.random().toString(36).slice(2, 8),
-  path: '/mcp',
-  auth: 'apikey',
-  keyMode: 'issue',
-  clientName: '',
-  qps: 10,
-  quota: 20000,
-  expPreset: '90',
-  expire: undefined,
-  bindIds: [],
   mode: 'all',
 })
 const addKw = ref('')
 const addToolKw = ref('')
 const hubKw = ref('')
+const sourceCustom = ref('')
 const addSvc = ref(store.services[0]?.id || '')
 const picked = ref([])
 const sourceChoices = computed(() => platformOptions())
@@ -89,13 +83,25 @@ function confirmAct(title, content, okMsg) {
 }
 function resetSvcForm() {
   Object.assign(form, { name: '', code: '', proto: 'Streamable HTTP', version: 'v1.0.0', endpoint: '', sources: [], discover: true })
+  sourceCustom.value = ''
 }
-function submitSvc() {
+function addCustomSource() {
+  const t = sourceCustom.value.trim()
+  if (!t) return
+  if (!form.sources.includes(t)) form.sources = [...form.sources, t]
+  rememberPlatforms([t])
+  sourceCustom.value = ''
+}
+function openCreateSvc() {
+  resetSvcForm()
+  svcVisible.value = true
+}
+function beforeCreateSvc() {
   const name = form.name.trim(), code = form.code.trim(), endpoint = form.endpoint.trim()
-  if (!name) { Message.warning('请填写服务名称'); return }
-  if (!/^[a-z][a-z0-9-]*$/.test(code)) { Message.warning('服务标识需为 kebab-case（小写字母/数字/中划线）'); return }
-  if (store.services.some((s) => s.code === code)) { Message.warning(`服务标识 ${code} 已存在`); return }
-  if (!/^https?:\/\/.+/.test(endpoint)) { Message.warning('端点需为 http(s) URL'); return }
+  if (!name) { Message.warning('请填写服务名称'); return false }
+  if (!/^[a-z][a-z0-9-]*$/.test(code)) { Message.warning('服务标识需为 kebab-case（小写字母/数字/中划线）'); return false }
+  if (store.services.some((s) => s.code === code)) { Message.warning(`服务标识 ${code} 已存在`); return false }
+  if (!/^https?:\/\/.+/.test(endpoint)) { Message.warning('端点需为 http(s) URL'); return false }
   rememberPlatforms(form.sources)
   const id = 'svc' + Date.now().toString(36)
   const svc = {
@@ -106,10 +112,10 @@ function submitSvc() {
   const doDiscover = form.discover
   store.services.push(svc)
   ensureSvcMeta(svc)
-  svcVisible.value = false
   resetSvcForm()
   if (doDiscover) runDiscover(svc)
   else Message.success('服务已登记。可稍后探测 tools/list，或到工具目录手动登记。')
+  return true
 }
 function runDiscover(svc) {
   if (!svc) return
@@ -170,28 +176,23 @@ function bindNewSet() {
 }
 function resetSetForm() {
   setForm.name = 'mcp_toolset_' + Math.random().toString(36).slice(2, 8)
-  setForm.path = '/mcp'
-  setForm.auth = 'apikey'
-  setForm.keyMode = 'issue'
-  setForm.clientName = ''
-  setForm.qps = 10
-  setForm.quota = 20000
-  setForm.expPreset = '90'
-  setForm.expire = undefined
-  setForm.bindIds = []
   setForm.mode = 'all'
-}
-function parseExpire() {
-  if (setForm.expPreset === 'never') return null
-  if (setForm.expPreset === 'custom') {
-    if (!setForm.expire) return undefined
-    return typeof setForm.expire === 'string' ? setForm.expire : fmtDateTime(new Date(setForm.expire))
-  }
-  return fmtDateTime(addDays(+setForm.expPreset))
 }
 function gotoKeys(ts) {
   store.clientFlt.toolsetId = ts.id
   emit('goto', 'clients')
+}
+function ownerName(id) {
+  return store.users.find((u) => u.id === id)?.name || '—'
+}
+function openKeyDetail(ts) {
+  keyDrawerSet.value = ts
+  keyDrawerVisible.value = true
+}
+function gotoKeysFromDrawer() {
+  if (!keyDrawerSet.value) return
+  keyDrawerVisible.value = false
+  gotoKeys(keyDrawerSet.value)
 }
 function openCreateSet() {
   store.hubTab = 'toolsets'
@@ -201,41 +202,17 @@ function openCreateSet() {
 function submitSet() {
   const name = setForm.name.trim()
   if (!name) { Message.warning('请填写 MCP 工具集名称'); return }
-  if (!setForm.path.startsWith('/')) { Message.warning('访问路径需以 / 开头'); return }
-  if (setForm.keyMode === 'bind' && !setForm.bindIds.length) {
-    Message.warning('请选择要绑定的接入密钥')
-    return
-  }
-  let expire = null
-  if (setForm.keyMode === 'issue') {
-    expire = parseExpire()
-    if (expire === undefined) { Message.warning('请选择到期时间'); return }
-  }
   const id = 'ts-' + Date.now().toString(36)
   const ts = {
-    id, name, path: setForm.path.trim() || '/mcp',
-    auth: setForm.auth,
+    id, name, path: '/mcp',
+    auth: 'apikey',
     mode: setForm.mode, status: 'running',
     created: new Date().toISOString().slice(0, 19).replace('T', ' '),
     tools: [],
   }
   store.toolsets.unshift(ts)
-  if (setForm.keyMode === 'issue') {
-    issueClient({
-      name: (setForm.clientName.trim() || `${name} 接入`),
-      tag: 'blue',
-      qps: +setForm.qps,
-      quota: +setForm.quota || 20000,
-      expire,
-      toolsetIds: [id],
-    })
-  } else {
-    attachToolsetToClients(id, setForm.bindIds)
-  }
   setVisible.value = false
-  Message.success(setForm.keyMode === 'issue'
-    ? '工具集已创建，密钥已写入「接入与密钥」。请勾选要下发的工具。'
-    : '工具集已创建，已绑定已有密钥。请勾选要下发的工具。')
+  Message.success('工具集已创建，请勾选要归集的工具。密钥请到「接入与密钥」签发。')
   openAdd(ts)
 }
 function openAdd(ts, svcId) {
@@ -271,7 +248,7 @@ function debugSet(ts) {
   })
 }
 function debugSvc(s) {
-  openPlayground({ endpoint: s.endpoint, proto: s.proto })
+  openPlayground({ endpoint: s.endpoint, proto: s.proto, apiKey: keyForEndpoint(s.endpoint) })
 }
 function modeName(id) {
   return CALL_MODES.find((m) => m.id === id)?.title || id
@@ -283,7 +260,7 @@ function modeName(id) {
     <div class="page-head mcp-hub-head">
       <h2>MCP 中心</h2>
       <div class="hub-intro">
-        <div class="desc">MCP 服务登记 Remote 端点；工具集从各服务勾选工具后下发给 Agent。入站鉴权只有一套：在「接入与密钥」签发的 API Key，创建工具集时签发或绑定，不另造密钥。</div>
+        <div class="desc">MCP 服务登记 Remote 端点；工具集只负责把各服务里的工具归集后下发给 Agent。密钥在「接入与密钥」签发并绑定工具集。备注：新服务请联系 MCP 服务人员。</div>
         <a-button type="text" class="tutorial-link" @click="emit('goto', 'sequence')">
           查看教程 <icon-down />
         </a-button>
@@ -296,7 +273,7 @@ function modeName(id) {
     </div>
 
     <div class="hub-toolbar">
-      <a-button v-if="store.hubTab === 'services'" type="primary" @click="svcVisible = true">创建 MCP 服务</a-button>
+      <a-button v-if="store.hubTab === 'services'" type="primary" @click="openCreateSvc">创建 MCP 服务</a-button>
       <a-button v-else type="primary" @click="openCreateSet">创建 MCP 工具集</a-button>
       <a-input-search v-model="hubKw" allow-clear placeholder="搜索名称、ID、所属系统" :style="{ width: '240px' }" />
     </div>
@@ -400,12 +377,11 @@ function modeName(id) {
             <a-table-column title="调用模式" :width="100">
               <template #cell="{ record }">{{ modeName(record.mode) }}</template>
             </a-table-column>
-            <a-table-column title="接入密钥" :width="200">
+            <a-table-column title="接入密钥" :width="120">
               <template #cell="{ record }">
-                <a-space wrap>
-                  <a-tag v-for="c in clientsOfToolset(record.id)" :key="c.id" color="arcoblue" size="small" @click="gotoKeys(record)">{{ c.name }}</a-tag>
-                  <a-button v-if="!clientsOfToolset(record.id).length" type="text" size="mini" @click="gotoKeys(record)">未绑定</a-button>
-                </a-space>
+                <a-button type="text" size="mini" @click="openKeyDetail(record)">
+                  {{ clientsOfToolset(record.id).length ? '查看详情' : '未绑定' }}
+                </a-button>
               </template>
             </a-table-column>
             <a-table-column title="工具数" :width="80" align="right">
@@ -424,8 +400,16 @@ function modeName(id) {
       </template>
     </div>
 
-    <a-modal v-model:visible="svcVisible" title="创建 MCP 服务" :width="620" @ok="submitSvc" :ok-text="'创建'" unmount-on-close>
+    <a-modal
+      v-model:visible="svcVisible"
+      title="创建 MCP 服务"
+      :width="620"
+      ok-text="创建"
+      unmount-on-close
+      @before-ok="beforeCreateSvc"
+    >
       <a-form :model="form" layout="vertical">
+        <a-alert type="warning" style="margin-bottom:12px">备注：请联系 MCP 服务人员。</a-alert>
         <a-row :gutter="16">
           <a-col :span="12"><a-form-item label="服务名称" field="name" required><a-input v-model="form.name" placeholder="如：test-my-mcp、CRM 查询服务" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item label="服务标识（kebab-case）" field="code" required><a-input v-model="form.code" placeholder="test-my-mcp" class="mono" /></a-form-item></a-col>
@@ -442,17 +426,29 @@ function modeName(id) {
         <a-form-item label="MCP 端点 URL" field="endpoint" required>
           <a-input v-model="form.endpoint" placeholder="https://mcp.futures-data.cn/test/mcp" class="mono" />
         </a-form-item>
-        <a-form-item label="所属系统（可选）" extra="分类标签，可多选、可直接输入新建。同花顺 / SMM / 钢联 / CRM 都只是标签，后面加数仓、OA 同样登记。">
+        <a-form-item label="所属系统">
           <a-select
             v-model="form.sources"
             multiple
             allow-clear
             allow-create
             allow-search
-            placeholder="选择或输入，例如 CRM 系统"
+            placeholder="勾选已有系统"
+            style="width:100%"
           >
             <a-option v-for="p in sourceChoices" :key="p" :value="p">{{ p }}</a-option>
           </a-select>
+        </a-form-item>
+        <a-form-item label="其他">
+          <div class="src-other">
+            <a-input
+              v-model="sourceCustom"
+              allow-clear
+              placeholder="没有合适的，可自己命名，如 OA、风控"
+              @press-enter="addCustomSource"
+            />
+            <a-button type="primary" @click="addCustomSource">添加</a-button>
+          </div>
         </a-form-item>
         <a-form-item>
           <a-checkbox v-model="form.discover">创建后探测 tools/list，把工具挂到本服务（之后才能加入工具集）</a-checkbox>
@@ -487,96 +483,15 @@ function modeName(id) {
       </a-select>
     </a-modal>
 
-    <a-modal v-model:visible="setVisible" title="创建 MCP 工具集" :width="760" @ok="submitSet" :ok-text="'创建'" unmount-on-close>
+    <a-modal v-model:visible="setVisible" title="创建 MCP 工具集" :width="520" @ok="submitSet" ok-text="创建" unmount-on-close>
       <a-form :model="setForm" layout="vertical">
-        <a-typography-title :heading="6">基本信息</a-typography-title>
-        <a-form-item label="MCP 工具集名称" required extra="名称创建后不可修改">
-          <a-input v-model="setForm.name" class="mono" />
+        <a-form-item label="工具集名称" required>
+          <a-input v-model="setForm.name" placeholder="如 mcp_toolset_market" />
         </a-form-item>
-        <a-form-item label="访问路径" required>
-          <a-input v-model="setForm.path" class="mono" />
-        </a-form-item>
-        <a-typography-title :heading="6">认证信息</a-typography-title>
-        <a-form-item label="入站身份认证" required>
-          <a-radio-group v-model="setForm.auth" type="button">
-            <a-radio value="apikey">API Key</a-radio>
-            <a-radio value="oauth">OAuth JWT</a-radio>
-          </a-radio-group>
-        </a-form-item>
-        <a-alert v-if="setForm.auth === 'oauth'" type="warning" style="margin-bottom:12px">OAuth 2.1 入站按官方 MCP Authorization 规划；当前网关仍用「接入与密钥」中的 Bearer API Key。</a-alert>
-        <a-form-item label="密钥来源" required>
-          <a-radio-group v-model="setForm.keyMode" type="button">
-            <a-radio value="issue">签发新密钥</a-radio>
-            <a-radio value="bind">绑定已有密钥</a-radio>
-          </a-radio-group>
-        </a-form-item>
-        <template v-if="setForm.keyMode === 'issue'">
-          <a-alert type="info" style="margin-bottom:12px">将在「接入与密钥」创建一条凭证并绑定本工具集，不再单独维护另一套 Key 名称。</a-alert>
-          <a-row :gutter="16">
-            <a-col :span="12">
-              <a-form-item label="接入端名称" extra="默认用工具集名称">
-                <a-input v-model="setForm.clientName" :placeholder="(setForm.name.trim() || '工具集') + ' 接入'" />
-              </a-form-item>
-            </a-col>
-            <a-col :span="12">
-              <a-form-item label="QPS 限流">
-                <a-select v-model="setForm.qps" :options="[5,10,20,50].map(n => ({ value: n, label: String(n) }))" />
-              </a-form-item>
-            </a-col>
-            <a-col :span="12">
-              <a-form-item label="日配额（次）">
-                <a-input-number v-model="setForm.quota" :min="1000" :style="{ width: '100%' }" />
-              </a-form-item>
-            </a-col>
-            <a-col :span="12">
-              <a-form-item label="有效期">
-                <a-select v-model="setForm.expPreset">
-                  <a-option value="7">7 天</a-option>
-                  <a-option value="30">30 天</a-option>
-                  <a-option value="90">90 天</a-option>
-                  <a-option value="365">1 年</a-option>
-                  <a-option value="never">长期有效</a-option>
-                  <a-option value="custom">指定到期时间</a-option>
-                </a-select>
-              </a-form-item>
-            </a-col>
-            <a-col v-if="setForm.expPreset === 'custom'" :span="12">
-              <a-form-item label="到期时间">
-                <a-date-picker v-model="setForm.expire" show-time format="YYYY-MM-DD HH:mm:ss" :style="{ width: '100%' }" />
-              </a-form-item>
-            </a-col>
-          </a-row>
-        </template>
-        <a-form-item v-else label="选择密钥" required extra="同一把 Key 可授权多个工具集，配额与到期在接入与密钥中统一管理。">
-          <a-select
-            v-model="setForm.bindIds"
-            multiple
-            allow-search
-            placeholder="选择已有接入端"
-          >
-            <a-option
-              v-for="c in store.clients.filter(x => x.status !== 'revoked')"
-              :key="c.id"
-              :value="c.id"
-            >
-              {{ c.name }}（{{ c.key }}）
-            </a-option>
+        <a-form-item label="调用模式" required :extra="CALL_MODES.find(m => m.id === setForm.mode)?.desc">
+          <a-select v-model="setForm.mode">
+            <a-option v-for="m in CALL_MODES" :key="m.id" :value="m.id">{{ m.title }}</a-option>
           </a-select>
-        </a-form-item>
-        <a-typography-title :heading="6">工具管理</a-typography-title>
-        <a-form-item label="调用模式" required>
-          <div class="mode-cards">
-            <div
-              v-for="m in CALL_MODES"
-              :key="m.id"
-              class="mode-card"
-              :class="{ on: setForm.mode === m.id }"
-              @click="setForm.mode = m.id"
-            >
-              <div class="mode-title">{{ m.title }}</div>
-              <div class="muted">{{ m.desc }}</div>
-            </div>
-          </div>
         </a-form-item>
       </a-form>
     </a-modal>
@@ -594,7 +509,7 @@ function modeName(id) {
         <div class="pane">
           <div class="pane-hd">
             <span>1. 选择 MCP 服务</span>
-            <a-button type="text" size="mini" @click="svcVisible = true">创建 MCP 服务</a-button>
+            <a-button type="text" size="mini" @click="openCreateSvc">创建 MCP 服务</a-button>
           </div>
           <div class="pane-search">
             <a-input-search v-model="addKw" allow-clear placeholder="搜索服务名称 / 标识" />
@@ -673,5 +588,71 @@ function modeName(id) {
         </div>
       </template>
     </a-modal>
+
+    <a-drawer
+      v-model:visible="keyDrawerVisible"
+      :width="520"
+      unmount-on-close
+      :ok-text="'关闭'"
+      :hide-cancel="true"
+    >
+      <template #title>
+        <span>接入密钥 · {{ keyDrawerSet?.name }}</span>
+      </template>
+      <template v-if="keyDrawerSet">
+        <div
+          v-for="c in clientsOfToolset(keyDrawerSet.id)"
+          :key="c.id"
+          class="key-detail-card"
+        >
+          <div class="key-detail-hd">
+            <span class="key-detail-name">{{ c.name }}</span>
+            <a-tag :color="keyStatus(c).tag" size="small">{{ keyStatus(c).text }}</a-tag>
+          </div>
+          <a-descriptions :column="1" size="small" bordered>
+            <a-descriptions-item label="API Key">
+              <span class="mono tiny">{{ c.key }}</span>
+            </a-descriptions-item>
+            <a-descriptions-item label="归属用户">{{ ownerName(c.userId) }}</a-descriptions-item>
+            <a-descriptions-item label="类型">{{ c.type }}</a-descriptions-item>
+            <a-descriptions-item label="日配额">{{ fmt(c.calls) }} / {{ fmt(c.quota) }}</a-descriptions-item>
+            <a-descriptions-item label="QPS">{{ c.qps }}</a-descriptions-item>
+            <a-descriptions-item label="到期">{{ keyExpireMeta(c).label }}</a-descriptions-item>
+          </a-descriptions>
+        </div>
+        <a-empty v-if="!clientsOfToolset(keyDrawerSet.id).length" description="尚未绑定接入密钥" />
+        <a-button type="primary" long style="margin-top:8px" @click="gotoKeysFromDrawer">前往接入与密钥</a-button>
+      </template>
+    </a-drawer>
   </div>
 </template>
+
+<style scoped>
+.src-other {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.src-other :deep(.arco-input-wrapper) {
+  flex: 1;
+  min-width: 0;
+}
+.key-detail-card { margin-bottom: 16px; }
+.key-detail-card:last-of-type { margin-bottom: 12px; }
+.key-detail-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.key-detail-name {
+  font-weight: 600;
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

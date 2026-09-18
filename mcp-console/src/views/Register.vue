@@ -48,7 +48,7 @@ onBeforeUnmount(() => {
       <p class="kicker">MCP 账号注册</p>
       <template v-if="done">
         <h1>注册完成</h1>
-        <p class="lede">{{ form.name }}，账号已开通。可用登录邮箱 {{ form.email }} 或手机 {{ form.phone }} 进入。</p>
+        <p class="lede">{{ form.name }}，账号已开通。可用手机 {{ form.phone }}{{ form.email ? ' 或登录邮箱 ' + form.email : '' }} 进入。</p>
         <p class="done-tip">你可以关闭此页面。管理员会在接入后为你签发 API Key。</p>
       </template>
       <template v-else-if="invalid">
@@ -77,11 +77,11 @@ onBeforeUnmount(() => {
               size="large"
             />
           </a-form-item>
-          <a-form-item label="登录邮箱" required extra="登录账号，不是联系备用邮箱">
+          <a-form-item label="登录邮箱" extra="选填，填写后可作为登录账号">
             <a-input
               v-model="form.email"
               type="email"
-              placeholder="name@example.com"
+              placeholder="选填，如 name@example.com"
               autocomplete="email"
               size="large"
             />

@@ -21,6 +21,7 @@ const GROUPS = [
     id: 'flow',
     title: '接入流程',
     items: [
+      { id: 'mcp-tools', title: 'MCP 工具概览', src: '/docs/mcp-tools.html' },
       { id: 'sequence', title: '时序图文档', src: '/docs/sequence.html' },
     ],
   },

@@ -1,19 +1,22 @@
 <script setup>
 import { computed, onDeactivated, reactive, ref } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
-import { store, USER_KINDS, USER_ROLES, kindMeta, roleTag, createInvite, inviteUrl } from '../store'
+import { store, USER_KINDS, USER_ROLES, kindMeta, createInvite, inviteUrl, WECOM_DEPTS, WECOM_MEMBERS, wecomMemberStatus, importStaffFromWecom } from '../store'
 import { copyText } from '../utils'
 
 const emit = defineEmits(['goto'])
 const statusTab = ref('all')
 const kindTab = ref('all')
 const inviteVisible = ref(false)
-const applyVisible = ref(false)
 const inviteStep = ref('form')
 const lastInvite = ref(null)
 const staffRoles = USER_ROLES.filter((r) => r.value !== '客户')
 const invite = reactive({ kind: 'staff', name: '', role: '研究员', org: '数智中心' })
-const apply = reactive({ name: '', phone: '', email: '', role: '开发工程师', team: '数智中心', note: '' })
+const wecomDepts = ref([])
+const wecomKw = ref('')
+const wecomPicked = ref([])
+const wecomLoading = ref(false)
+const wecomReady = ref(false)
 
 const ST = {
   正常: { tag: 'green' },
@@ -35,9 +38,22 @@ const rows = computed(() => {
 })
 
 function resetInvite() {
-  Object.assign(invite, { kind: 'staff', name: '', role: '研究员', org: invite.kind === 'customer' ? '客户公司' : '数智中心' })
+  Object.assign(invite, { kind: 'staff', name: '', role: '研究员', org: '数智中心' })
   inviteStep.value = 'form'
   lastInvite.value = null
+  wecomDepts.value = []
+  wecomKw.value = ''
+  wecomPicked.value = []
+  wecomLoading.value = false
+  wecomReady.value = false
+}
+function loadWecom() {
+  wecomLoading.value = true
+  wecomReady.value = false
+  setTimeout(() => {
+    wecomLoading.value = false
+    wecomReady.value = true
+  }, 480)
 }
 function onKind(k) {
   invite.kind = k
@@ -47,14 +63,59 @@ function onKind(k) {
   } else {
     if (invite.role === '客户') invite.role = '研究员'
     if (!invite.org) invite.org = '数智中心'
+    if (!wecomReady.value && !wecomLoading.value) loadWecom()
   }
 }
 function openInvite() {
   resetInvite()
   invite.org = '数智中心'
   inviteVisible.value = true
+  loadWecom()
 }
+const wecomRows = computed(() => {
+  const kw = wecomKw.value.trim()
+  return WECOM_MEMBERS.filter((m) => {
+    if (wecomDepts.value.length && !wecomDepts.value.includes(m.dept)) return false
+    if (!kw) return true
+    return [m.name, m.mobile, m.email, m.userid, m.dept, m.title].join(' ').includes(kw)
+  }).map((m) => ({ ...m, disabled: wecomMemberStatus(m).bound }))
+})
+function wecomDisabled(m) {
+  return wecomMemberStatus(m).bound
+}
+function wecomStatusLabel(m) {
+  const s = wecomMemberStatus(m)
+  if (s.bound) return '已开通'
+  if (s.status) return s.status
+  return '可开通'
+}
+function wecomStatusColor(m) {
+  const label = wecomStatusLabel(m)
+  if (label === '已开通') return 'green'
+  if (label === '待注册') return 'orangered'
+  if (label === '待审批') return 'arcoblue'
+  return 'gray'
+}
+const wecomRowSelection = {
+  type: 'checkbox',
+  showCheckedAll: true,
+  onlyCurrent: false,
+}
+const inviteOkText = computed(() => {
+  if (invite.kind === 'staff') return '开通所选员工'
+  return inviteStep.value === 'done' ? '完成' : '生成邀请链接'
+})
 function submitInvite() {
+  if (invite.kind === 'staff') {
+    const members = WECOM_MEMBERS.filter((m) => wecomPicked.value.includes(m.userid) && !wecomDisabled(m))
+    if (!members.length) { Message.warning('请从企业微信通讯录选择要开通的同事'); return false }
+    const { created, updated } = importStaffFromWecom(members, invite.role)
+    const n = created.length + updated.length
+    if (!n) { Message.warning('所选同事均已开通'); return false }
+    Message.success(`已通过企业微信开通 ${n} 名内部员工`)
+    wecomPicked.value = []
+    return true
+  }
   if (inviteStep.value === 'done') {
     resetInvite()
     return true
@@ -84,25 +145,6 @@ async function copyInvite(u) {
 function registerHref(u) {
   return u?.inviteToken ? inviteUrl(u.inviteToken) : undefined
 }
-function submitApply() {
-  const name = apply.name.trim()
-  const phone = apply.phone.trim()
-  const email = apply.email.trim()
-  if (!name || !phone || !email) { Message.warning('请填写姓名、手机号与登录邮箱'); return false }
-  if (!/^1\d{10}$/.test(phone)) { Message.warning('请填写 11 位手机号'); return false }
-  store.users.unshift({
-    id: 'u-' + Date.now().toString(36),
-    name, phone, email,
-    kind: 'staff',
-    role: apply.role, tag: roleTag(apply.role),
-    team: apply.team.trim() || '数智中心', status: '待审批',
-    created: new Date().toISOString().slice(0, 10), last: '—',
-    note: apply.note.trim(),
-  })
-  Object.assign(apply, { name: '', phone: '', email: '', role: '开发工程师', team: '数智中心', note: '' })
-  Message.success('申请已提交，等待管理员审批')
-  return true
-}
 function gotoIssue(u) {
   store.clientFlt.userId = u.id
   store.clientFlt.openIssue = true
@@ -129,7 +171,6 @@ function disable(u) {
 }
 onDeactivated(() => {
   inviteVisible.value = false
-  applyVisible.value = false
 })
 </script>
 
@@ -138,14 +179,11 @@ onDeactivated(() => {
     <div class="page-head">
       <div>
         <h2>用户管理</h2>
-        <div class="desc">邀请时生成注册链接。对方用手机号 + 登录邮箱完成注册；身份分为内部员工与外部客户。</div>
+        <div class="desc">内部员工从企业微信通讯录选择开通，手机号与企业邮箱由企微返回；外部客户仍持邀请链接，用手机号注册，登录邮箱选填。</div>
       </div>
-      <a-space>
-        <a-button @click="applyVisible = true">内部自助申请</a-button>
-        <a-button type="primary" @click="openInvite">
-          <template #icon><icon-plus /></template>邀请用户
-        </a-button>
-      </a-space>
+      <a-button type="primary" @click="openInvite">
+        <template #icon><icon-plus /></template>开通用户
+      </a-button>
     </div>
     <a-card :bordered="false" style="margin-bottom:16px">
       <div class="filter-bar">
@@ -173,7 +211,12 @@ onDeactivated(() => {
       </div>
       <a-table :data="rows" :pagination="false" row-key="id" hoverable stripe :scroll="{ x: 1280 }">
         <template #columns>
-          <a-table-column title="姓名" data-index="name" :width="110" />
+          <a-table-column title="姓名" :width="140">
+            <template #cell="{ record }">
+              {{ record.name }}
+              <a-tag v-if="record.wecomUserId || record.source === 'wecom'" size="small" color="arcoblue" style="margin-left:6px">企微</a-tag>
+            </template>
+          </a-table-column>
           <a-table-column title="身份" :width="110">
             <template #cell="{ record }">
               <a-tag :color="kindMeta(record.kind).tag" size="small">{{ kindMeta(record.kind).label }}</a-tag>
@@ -196,9 +239,9 @@ onDeactivated(() => {
           <a-table-column title="操作" :width="240" :fixed="'right'">
             <template #cell="{ record }">
               <a-button v-if="record.status === '待审批'" type="text" size="mini" @click="approve(record)">通过</a-button>
-              <a-button v-if="record.status === '待注册'" type="text" size="mini" @click="copyInvite(record)">复制链接</a-button>
+              <a-button v-if="record.status === '待注册' && record.kind === 'customer'" type="text" size="mini" @click="copyInvite(record)">复制链接</a-button>
               <a-button
-                v-if="record.status === '待注册'"
+                v-if="record.status === '待注册' && record.kind === 'customer'"
                 type="text"
                 size="mini"
                 :href="registerHref(record)"
@@ -216,9 +259,9 @@ onDeactivated(() => {
       <a-col :xs="24" :md="12" style="margin-bottom:16px">
         <a-card title="开通规则" :bordered="false">
           <div class="kv">
-            <span class="k">邀请</span><span>生成链接发给对方，7 天内用手机号 + 登录邮箱注册</span>
-            <span class="k">内部</span><span>员工走邀请或自助申请；自助需管理员审批</span>
-            <span class="k">外部</span><span>客户只能持邀请链接注册，默认 90 天、低配额</span>
+            <span class="k">内部</span><span>企业微信通讯录选人开通，手机号 / 企业邮箱由 API 返回</span>
+            <span class="k">外部</span><span>只能持邀请链接注册，7 天内填写姓名与手机号，登录邮箱选填，默认 90 天低配额</span>
+            <span class="k">密钥</span><span>账号「正常」后再到「接入与密钥」签发</span>
           </div>
         </a-card>
       </a-col>
@@ -235,10 +278,10 @@ onDeactivated(() => {
 
     <a-modal
       v-model:visible="inviteVisible"
-      title="邀请用户"
-      :width="520"
+      title="开通用户"
+      :width="invite.kind === 'staff' ? 760 : 520"
       @before-ok="submitInvite"
-      :ok-text="inviteStep === 'done' ? '完成' : '生成邀请链接'"
+      :ok-text="inviteOkText"
       unmount-on-close
       @cancel="resetInvite"
     >
@@ -256,26 +299,91 @@ onDeactivated(() => {
             <div class="kind-d">{{ k.desc }}</div>
           </button>
         </div>
-        <a-form :model="invite" layout="vertical" style="margin-top:16px">
-          <a-form-item :label="invite.kind === 'customer' ? '客户公司' : '所属团队'" required>
-            <a-input v-model="invite.org" :placeholder="invite.kind === 'customer' ? '如 某铜业集团' : '如 数智中心'" />
-          </a-form-item>
-          <a-form-item v-if="invite.kind === 'staff'" label="预置角色" required>
-            <a-select v-model="invite.role">
-              <a-option v-for="r in staffRoles" :key="r.value" :value="r.value">{{ r.value }}</a-option>
-            </a-select>
-          </a-form-item>
-          <a-form-item label="受邀人姓名（选填）">
-            <a-input v-model="invite.name" placeholder="可不填，对方注册时自己填写" />
-          </a-form-item>
-        </a-form>
-        <a-alert v-if="invite.kind === 'customer'">外部客户不能自助申请。把链接发给对方，用手机号和登录邮箱注册即可。</a-alert>
-        <a-alert v-else>链接 7 天有效。对方打开后填写手机号与登录邮箱，无需管理员再录入联系方式。</a-alert>
+
+        <template v-if="invite.kind === 'staff'">
+          <a-form :model="invite" layout="vertical" style="margin-top:16px">
+            <a-row :gutter="12">
+              <a-col :span="12">
+                <a-form-item label="预置角色" required>
+                  <a-select v-model="invite.role" placeholder="选择角色">
+                    <a-option v-for="r in staffRoles" :key="r.value" :value="r.value">{{ r.value }}</a-option>
+                  </a-select>
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item label="内部团队">
+                  <a-select
+                    v-model="wecomDepts"
+                    multiple
+                    allow-clear
+                    allow-search
+                    placeholder="下拉勾选团队，不选则全部"
+                    :max-tag-count="2"
+                  >
+                    <a-option v-for="d in WECOM_DEPTS" :key="d" :value="d">{{ d }}</a-option>
+                  </a-select>
+                </a-form-item>
+              </a-col>
+            </a-row>
+          </a-form>
+          <a-alert style="margin-bottom:12px">调用企业微信通讯录 API（addressbook）按部门拉人。已开通同事不可再选；待注册 / 待审批选中后直接变为正常。</a-alert>
+          <div class="wecom-toolbar">
+            <a-input-search
+              v-model="wecomKw"
+              allow-clear
+              placeholder="姓名 / 手机 / 邮箱 / userid"
+              :style="{ width: '260px' }"
+            />
+          </div>
+          <a-spin :loading="wecomLoading" tip="正在调用企业微信通讯录 API…">
+            <a-table
+              v-if="wecomReady"
+              :data="wecomRows"
+              :pagination="false"
+              row-key="userid"
+              size="small"
+              hoverable
+              :scroll="{ y: 280 }"
+              :row-selection="wecomRowSelection"
+              :row-class="(record) => record.disabled ? 'wecom-bound' : undefined"
+              v-model:selectedKeys="wecomPicked"
+            >
+              <template #columns>
+                <a-table-column title="姓名" data-index="name" :width="90" />
+                <a-table-column title="部门" data-index="dept" :width="100" />
+                <a-table-column title="职务" data-index="title" :width="110" />
+                <a-table-column title="手机" :width="120">
+                  <template #cell="{ record }"><span class="mono" style="font-size:12px">{{ record.mobile }}</span></template>
+                </a-table-column>
+                <a-table-column title="企业邮箱" :width="180">
+                  <template #cell="{ record }"><span class="mono" style="font-size:12px">{{ record.email }}</span></template>
+                </a-table-column>
+                <a-table-column title="状态" :width="90">
+                  <template #cell="{ record }">
+                    <a-tag :color="wecomStatusColor(record)" size="small">{{ wecomStatusLabel(record) }}</a-tag>
+                  </template>
+                </a-table-column>
+              </template>
+            </a-table>
+            <div v-else class="wecom-placeholder" />
+          </a-spin>
+          <p class="muted" style="margin-top:8px">已选 {{ wecomPicked.length }} 人 · 共 {{ wecomRows.length }} 人</p>
+        </template>
+
+        <template v-else>
+          <a-form :model="invite" layout="vertical" style="margin-top:16px">
+            <a-form-item label="客户公司" required>
+              <a-input v-model="invite.org" placeholder="如 某铜业集团" />
+            </a-form-item>
+            <a-form-item label="受邀人姓名（选填）">
+              <a-input v-model="invite.name" placeholder="可不填，对方注册时自己填写" />
+            </a-form-item>
+          </a-form>
+          <a-alert>外部客户不在企业微信通讯录。把链接发给对方，7 天内用姓名和手机号注册即可，登录邮箱选填。</a-alert>
+        </template>
       </template>
       <template v-else>
-        <a-alert type="success" style="margin-bottom:14px">
-          已生成{{ lastInvite?.kind === 'customer' ? '外部客户' : '内部员工' }}注册链接，发给对方即可。
-        </a-alert>
+        <a-alert type="success" style="margin-bottom:14px">已生成外部客户注册链接，发给对方即可。</a-alert>
         <div class="invite-url">{{ lastInvite?.url }}</div>
         <a-space style="margin-top:12px">
           <a-button type="primary" @click="copyLast">
@@ -283,24 +391,8 @@ onDeactivated(() => {
           </a-button>
           <a-button :href="lastInvite?.url" target="_blank" rel="noopener noreferrer">打开注册页</a-button>
         </a-space>
-        <p class="muted" style="margin-top:12px">对方提交姓名、手机号、登录邮箱后，状态变为「正常」，再在「接入与密钥」签发。</p>
+        <p class="muted" style="margin-top:12px">对方提交姓名、手机号后，状态变为「正常」，再在「接入与密钥」签发。登录邮箱选填。</p>
       </template>
-    </a-modal>
-
-    <a-modal v-model:visible="applyVisible" title="内部员工自助申请" :width="480" @before-ok="submitApply" ok-text="提交申请" unmount-on-close>
-      <a-form :model="apply" layout="vertical">
-        <a-form-item label="姓名" required><a-input v-model="apply.name" /></a-form-item>
-        <a-form-item label="手机号" required><a-input v-model="apply.phone" placeholder="11 位手机号" maxlength="11" /></a-form-item>
-        <a-form-item label="登录邮箱" required><a-input v-model="apply.email" placeholder="企业邮箱" /></a-form-item>
-        <a-form-item label="申请角色" required>
-          <a-select v-model="apply.role">
-            <a-option v-for="r in staffRoles" :key="r.value" :value="r.value">{{ r.value }}</a-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="团队"><a-input v-model="apply.team" /></a-form-item>
-        <a-form-item label="用途"><a-textarea v-model="apply.note" placeholder="需要哪些 MCP 服务、预计 QPS" :auto-size="{ minRows: 3 }" /></a-form-item>
-      </a-form>
-      <a-alert>仅分公司内部员工可自助申请。外部客户请走「邀请用户」链接。</a-alert>
     </a-modal>
   </div>
 </template>
@@ -335,4 +427,17 @@ onDeactivated(() => {
   color: var(--color-text-1);
 }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.wecom-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.wecom-placeholder { min-height: 160px; }
+:deep(.wecom-bound) {
+  color: var(--color-text-3);
+  background: #f7f8fa;
+}
 </style>

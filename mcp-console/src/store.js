@@ -93,16 +93,15 @@ export const store = reactive({
     { id: 'ck-trial', name: '合作方试用', type: '服务端应用', tag: 'gray', key: 'mcp-sk-9e01…c4b2', calls: 86, quota: 5000, qps: 5, status: 'normal', expire: '2026-09-10 23:59:59', last: '3 天前', toolsetIds: ['ts-analytics'], userId: 'u-cust' },
   ],
   users: [
-    { id: 'u-admin', name: '陈可', email: 'chenke@example.com', phone: '13800001001', kind: 'staff', role: '管理员', tag: 'red', team: '数智中心', status: '正常', created: '2026-08-01', last: '10 分钟前' },
-    { id: 'u-dev', name: '林舟', email: 'linzhou@example.com', phone: '13800001002', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数智中心', status: '正常', created: '2026-08-12', last: '1 小时前' },
-    { id: 'u-an', name: '周研', email: 'zhouyan@example.com', phone: '13800001003', kind: 'staff', role: '研究员', tag: 'green', team: '有色组', status: '正常', created: '2026-09-02', last: '昨天' },
+    { id: 'u-admin', name: '陈可', email: 'chenke@example.com', phone: '13800001001', kind: 'staff', role: '管理员', tag: 'red', team: '数智中心', status: '正常', created: '2026-08-01', last: '10 分钟前', wecomUserId: 'chenke' },
+    { id: 'u-dev', name: '林舟', email: 'linzhou@example.com', phone: '13800001002', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数智中心', status: '正常', created: '2026-08-12', last: '1 小时前', wecomUserId: 'linzhou' },
+    { id: 'u-an', name: '周研', email: 'zhouyan@example.com', phone: '13800001003', kind: 'staff', role: '研究员', tag: 'green', team: '有色组', status: '正常', created: '2026-09-02', last: '昨天', wecomUserId: 'zhouyan' },
     { id: 'u-cust', name: '苏岚', email: 'sulan@tongye.example', phone: '13900002001', kind: 'customer', role: '客户', tag: 'gray', team: '某铜业集团', status: '正常', created: '2026-09-10', last: '3 天前' },
-    { id: 'u-wait', name: '王启', email: '', phone: '', kind: 'staff', role: '研究员', tag: 'green', team: '能化组', status: '待注册', created: '2026-09-17', last: '—', inviteToken: 'inv-staff-demo' },
+    { id: 'u-wait', name: '王启', email: '', phone: '', kind: 'staff', role: '研究员', tag: 'green', team: '能化组', status: '待注册', created: '2026-09-17', last: '—', wecomUserId: 'wangqi' },
     { id: 'u-cust-wait', name: '待注册', email: '', phone: '', kind: 'customer', role: '客户', tag: 'gray', team: '华东贸易', status: '待注册', created: '2026-09-18', last: '—', inviteToken: 'inv-cust-demo' },
-    { id: 'u-app', name: '赵衡', email: 'zhaoheng@example.com', phone: '13700001005', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数据分析', status: '待审批', created: '2026-09-18', last: '—', note: '内部自助申请：数据分析 MCP + 数仓只读' },
+    { id: 'u-app', name: '赵衡', email: 'zhaoheng@example.com', phone: '13700001005', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数据分析', status: '待审批', created: '2026-09-18', last: '—', wecomUserId: 'zhaoheng', note: '待从企业微信通讯录确认开通' },
   ],
   invites: [
-    { token: 'inv-staff-demo', kind: 'staff', role: '研究员', org: '能化组', nameHint: '王启', status: 'open', created: '2026-09-17', expireAt: '2026-09-24' },
     { token: 'inv-cust-demo', kind: 'customer', role: '客户', org: '华东贸易', nameHint: '', status: 'open', created: '2026-09-18', expireAt: '2026-09-25' },
   ],
   rules: [
@@ -187,7 +186,7 @@ export const CLIENT_TYPES = [
   { value: 'cyan', label: 'IDE 插件' },
 ]
 export const USER_KINDS = [
-  { value: 'staff', label: '内部员工', tag: 'arcoblue', desc: '分公司同事，可用企业邮箱登录，权限按角色' },
+  { value: 'staff', label: '内部员工', tag: 'arcoblue', desc: '从企业微信通讯录选择同事开通，手机号与企业邮箱由企微返回' },
   { value: 'customer', label: '外部客户', tag: 'orangered', desc: '合作方 / 产业客户，须持邀请链接注册，默认 90 天低配额' },
 ]
 export const USER_ROLES = [
@@ -201,6 +200,68 @@ export function kindMeta(kind) {
 }
 export function roleTag(role) {
   return USER_ROLES.find((r) => r.value === role)?.tag || 'gray'
+}
+
+export const WECOM_DEPTS = ['数智中心', '有色组', '能化组', '数据分析', '黑色组']
+export const WECOM_MEMBERS = [
+  { userid: 'chenke', name: '陈可', dept: '数智中心', title: '管理员', mobile: '13800001001', email: 'chenke@example.com' },
+  { userid: 'linzhou', name: '林舟', dept: '数智中心', title: '开发工程师', mobile: '13800001002', email: 'linzhou@example.com' },
+  { userid: 'zhouyan', name: '周研', dept: '有色组', title: '研究员', mobile: '13800001003', email: 'zhouyan@example.com' },
+  { userid: 'wangqi', name: '王启', dept: '能化组', title: '研究员', mobile: '13800001006', email: 'wangqi@example.com' },
+  { userid: 'zhaoheng', name: '赵衡', dept: '数据分析', title: '开发工程师', mobile: '13700001005', email: 'zhaoheng@example.com' },
+  { userid: 'guheng', name: '顾衡', dept: '数智中心', title: '开发工程师', mobile: '13800001011', email: 'guheng@example.com' },
+  { userid: 'yening', name: '叶宁', dept: '有色组', title: '研究员', mobile: '13800001012', email: 'yening@example.com' },
+  { userid: 'shenlan', name: '沈岚', dept: '能化组', title: '研究员', mobile: '13800001013', email: 'shenlan@example.com' },
+  { userid: 'machuan', name: '马川', dept: '黑色组', title: '研究员', mobile: '13800001014', email: 'machuan@example.com' },
+  { userid: 'dingke', name: '丁可', dept: '数据分析', title: '开发工程师', mobile: '13800001015', email: 'dingke@example.com' },
+]
+export function wecomMemberStatus(m) {
+  const u = store.users.find((x) =>
+    x.kind === 'staff' && (x.wecomUserId === m.userid || x.phone === m.mobile || (x.email && x.email === m.email))
+  )
+  if (!u) return { bound: false, status: '', user: null }
+  return { bound: u.status === '正常', status: u.status, user: u }
+}
+export function importStaffFromWecom(members, role = '研究员') {
+  const created = []
+  const updated = []
+  const today = new Date().toISOString().slice(0, 10)
+  members.forEach((m) => {
+    const hit = wecomMemberStatus(m)
+    if (hit.bound) return
+    if (hit.user) {
+      hit.user.name = m.name
+      hit.user.phone = m.mobile
+      hit.user.email = m.email
+      hit.user.team = m.dept
+      hit.user.wecomUserId = m.userid
+      hit.user.role = role || hit.user.role
+      hit.user.tag = roleTag(hit.user.role)
+      hit.user.status = '正常'
+      hit.user.last = '刚刚'
+      hit.user.source = 'wecom'
+      updated.push(hit.user)
+      return
+    }
+    const user = {
+      id: 'u-' + Date.now().toString(36) + m.userid,
+      name: m.name,
+      phone: m.mobile,
+      email: m.email,
+      kind: 'staff',
+      role,
+      tag: roleTag(role),
+      team: m.dept,
+      status: '正常',
+      created: today,
+      last: '刚刚',
+      wecomUserId: m.userid,
+      source: 'wecom',
+    }
+    store.users.unshift(user)
+    created.push(user)
+  })
+  return { created, updated }
 }
 export function mintInviteToken() {
   const n = Math.random().toString(36).slice(2, 10)
@@ -219,9 +280,9 @@ function plusDays(n) {
   return d.toISOString().slice(0, 10)
 }
 export function createInvite(opts = {}) {
-  const kind = opts.kind === 'customer' ? 'customer' : 'staff'
-  const role = kind === 'customer' ? '客户' : (opts.role || '研究员')
-  const org = (opts.org || '').trim() || (kind === 'customer' ? '外部客户' : '数智中心')
+  const kind = 'customer'
+  const role = '客户'
+  const org = (opts.org || '').trim() || '外部客户'
   const nameHint = (opts.name || '').trim()
   const token = mintInviteToken()
   const created = new Date().toISOString().slice(0, 10)
@@ -254,11 +315,11 @@ export function registerByInvite(token, payload = {}) {
   const name = String(payload.name || '').trim()
   const phone = String(payload.phone || '').trim()
   const email = String(payload.email || '').trim()
-  if (!name || !phone || !email) return { ok: false, msg: '请填写姓名、手机号与登录邮箱' }
+  if (!name || !phone) return { ok: false, msg: '请填写姓名与手机号' }
   if (!/^1\d{10}$/.test(phone)) return { ok: false, msg: '请填写 11 位手机号' }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, msg: '登录邮箱格式不正确' }
-  if (store.users.some((u) => u.inviteToken !== token && (u.phone === phone || u.email === email))) {
-    return { ok: false, msg: '手机号或登录邮箱已被占用' }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, msg: '登录邮箱格式不正确' }
+  if (store.users.some((u) => u.inviteToken !== token && (u.phone === phone || (email && u.email === email)))) {
+    return { ok: false, msg: email ? '手机号或登录邮箱已被占用' : '手机号已被占用' }
   }
   const user = store.users.find((u) => u.inviteToken === token)
   if (!user) return { ok: false, msg: '邀请不存在' }
@@ -322,6 +383,23 @@ export function primaryClientOfToolset(ts) {
 export function keyOfToolset(ts) {
   const c = primaryClientOfToolset(ts)
   return c?.secret || c?.key || ''
+}
+export function keyForEndpoint(endpoint) {
+  const url = String(endpoint || '').trim()
+  const ts = store.toolsets.find((s) => toolsetEndpoint(s) === url || url.includes(`/toolsets/${s.id}`))
+  if (ts) {
+    const k = keyOfToolset(ts)
+    if (k) return k
+  }
+  const svc = findServiceByEndpoint(url) || store.services.find((s) => s.endpoint === url)
+  if (svc) {
+    for (const set of toolsetsUsingService(svc.id)) {
+      const k = keyOfToolset(set)
+      if (k) return k
+    }
+  }
+  const c = store.clients.find((x) => x.status !== 'revoked')
+  return c?.secret || c?.key || 'mcp-sk-console-self-test'
 }
 
 export function platformOptions() {

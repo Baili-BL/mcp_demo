@@ -29,15 +29,15 @@ const ROWS = [
   { kind: 'msg', phase: 'p0', no: '2', from: 2, to: 5, dir: 'f', t: '评审上游边界', code: '哪套库 · 是否跨库 · 只读账号' },
   { kind: 'msg', phase: 'p0', no: '3', from: 5, to: 2, dir: 'r', t: '返回表结构与口径', code: '禁止在 MCP 层重算口径' },
   { kind: 'msg', phase: 'p0', no: '4', from: 2, to: 4, dir: 'f', t: '实现 FastMCP 工具', code: '@mcp.tool · snake_case', goto: 'tools' },
-  { kind: 'msg', phase: 'p0', no: '5', from: 2, to: 3, dir: 'f', t: '注册 MCP 服务', code: '名称 · 端点 · 协议 · 上游平台', goto: 'services' },
+  { kind: 'msg', phase: 'p0', no: '5', from: 2, to: 3, dir: 'f', t: '联系 MCP 服务人员登记服务', code: '名称 · 端点 · 协议 · 上游平台', goto: 'services' },
   { kind: 'msg', phase: 'p0', no: '6', from: 3, to: 2, dir: 'r', t: '服务已登记', code: '待探测 tools/list', goto: 'services' },
   { kind: 'msg', phase: 'p0', no: '7', from: 2, to: 3, dir: 'f', t: '注册工具 Schema', code: '探测或手工提交 · 编入工具集', goto: 'tools' },
   { kind: 'msg', phase: 'p0', no: '8', from: 3, to: 4, dir: 'f', t: '核对 tools/list', code: '与目录不一致则保持待发布' },
   { kind: 'msg', phase: 'p0', no: '9', from: 4, to: 3, dir: 'r', t: '返回工具清单', code: 'name + inputSchema', goto: 'tools' },
   { kind: 'phase', id: 'p1', t: '阶段一 · 用户开通与密钥签发' },
-  { kind: 'msg', phase: 'p1', no: '10', from: 2, to: 3, dir: 'f', t: '生成邀请链接', code: '内部员工 / 外部客户 · 7 天', goto: 'users' },
-  { kind: 'msg', phase: 'p1', no: '11', from: 3, to: 0, dir: 'r', t: '发放注册链接', code: '#register?t=inv-…', goto: 'users' },
-  { kind: 'msg', phase: 'p1', no: '12', from: 0, to: 3, dir: 'f', t: '填写手机与登录邮箱', code: '完成注册后账号为正常', goto: 'users' },
+  { kind: 'msg', phase: 'p1', no: '10', from: 2, to: 3, dir: 'f', t: '企业微信通讯录选人', code: '内部员工 · userid / 手机 / 邮箱', goto: 'users' },
+  { kind: 'msg', phase: 'p1', no: '11', from: 3, to: 0, dir: 'r', t: '发放客户邀请链接', code: '外部客户 · #register?t=inv-…', goto: 'users' },
+  { kind: 'msg', phase: 'p1', no: '12', from: 0, to: 3, dir: 'f', t: '客户填写姓名与手机号', code: '邮箱选填 · 完成后账号为正常', goto: 'users' },
   { kind: 'msg', phase: 'p1', no: '13', from: 2, to: 3, dir: 'f', t: '签发密钥并绑定工具集', code: 'QPS · 日配额 · 到期 · 归属用户', goto: 'clients' },
   { kind: 'msg', phase: 'p1', no: '14', from: 3, to: 5, dir: 'f', t: '写入密钥', code: 'INSERT INTO base_from_mcp_api_key', goto: 'clients' },
   { kind: 'msg', phase: 'p1', no: '15', from: 3, to: 2, dir: 'r', t: '完整 Key 仅展示一次', code: '含到期时间；过期后拒绝鉴权', goto: 'clients' },
@@ -98,7 +98,7 @@ const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '
     <div class="page-head">
       <div>
         <h2>时序图</h2>
-        <div class="desc">开发先实现并注册服务/工具，再发邀请链接开通用户、签发密钥。点击蓝色步骤跳到对应控制台页。</div>
+        <div class="desc">开发先实现并注册服务/工具；内部员工走企业微信选人开通，外部客户再发邀请链接，然后签发密钥。点击蓝色步骤跳到对应控制台页。</div>
       </div>
       <a-button href="/MCP时序信息流.html" target="_blank">
         <template #icon><icon-launch /></template>新窗口

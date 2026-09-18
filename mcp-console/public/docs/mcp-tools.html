@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP 工具概览</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap wide">
+  <p class="kicker">MCP · Agent 接入</p>
+  <h1>MCP 工具概览</h1>
+  <p class="lede">
+    MCP 工具是给 LLM Agent 用的期货研究品种指标适配器。它不改指标口径，只把 MySQL 指标库的查询重组为可被模型选择的工具、参数与返回值。
+  </p>
+  <div class="callout">
+    <b>薄包装原则：</b>工具实现只查询既有指标表（同花顺 / SMM / 钢联化工 / 手工录入 / EDB），不在 MCP 层重算口径。<br>
+    <b>数据语义一致：</b>返回字段与源库一致（指标代码、名称、单位、时间序列点）。<br>
+    <b>错误透传：</b>鉴权失败、参数不合法、上游超时以 MCP <code>ToolError</code> / 网关状态码返回，不改写业务含义。
+  </div>
+
+  <section>
+    <h2>鉴权</h2>
+    <table>
+      <thead><tr><th>形态</th><th>入口</th><th>鉴权</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>托管 MCP Server</td>
+          <td>Streamable HTTP 端点</td>
+          <td><code>Authorization: Bearer &lt;api_key&gt;</code>，校验 <code>base_from_mcp_api_key</code>（enabled + expire_time）</td>
+        </tr>
+        <tr>
+          <td>自托管 / 本地调试</td>
+          <td><code>python3 server.py</code> → <code>http://127.0.0.1:8600/mcp</code></td>
+          <td>同一套 Bearer Key；<code>MCP_AUTH_REQUIRED=0</code> 可关鉴权（仅本机）</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>API Key 在管理台「接入与密钥」签发，仅创建时完整展示。过期与日配额 / QPS 相互独立：过期直接 <code>AUTH_FAIL</code>，超限返回 429。</p>
+  </section>
+
+  <section>
+    <h2>调用频率与限流</h2>
+    <p>按接入密钥限制日配额与 QPS。请控制短时高并发；HTTP 429 表示触发限流，应降低并发、避免立即连续重试、按 <code>Retry-After</code> 稍后重试。密钥到期前 7 天会告警。</p>
+  </section>
+
+  <section>
+    <h2>MCP 服务与访问端点</h2>
+    <p>当前生产按业务拆为多个 MCP 服务；本地联调使用同一个 FastMCP 进程：</p>
+    <table>
+      <thead><tr><th>MCP 服务</th><th>标的宇宙</th><th>MCP 访问端点</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>futures-market-mcp</td>
+          <td>品种行情 / 库存 / 基差</td>
+          <td class="mono">https://mcp.futures-data.cn/market/mcp</td>
+        </tr>
+        <tr>
+          <td>futures-fundamental-mcp</td>
+          <td>产业基本面</td>
+          <td class="mono">https://mcp.futures-data.cn/fundamental/mcp</td>
+        </tr>
+        <tr>
+          <td>research-knowledge-mcp</td>
+          <td>研报知识（SSE）</td>
+          <td class="mono">https://mcp.futures-data.cn/research/sse</td>
+        </tr>
+        <tr>
+          <td>futures-metric-mcp（本地）</td>
+          <td>四源指标 + EDB + 汾渭周评</td>
+          <td class="mono">http://127.0.0.1:8600/mcp</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>本地 <code>futures-metric-mcp</code> 是行情与基本面指标的数据面实现，建议与密钥管理台一起使用。<code>list_metric_sources</code> / <code>search_source_indexes</code> 是其余取数工具的前置步骤。</p>
+  </section>
+
+  <section>
+    <h2>客户端快速配置</h2>
+    <p>把 JSON 粘进对应客户端。<code>&lt;your-api-key&gt;</code> 换成管理台签发的 Key。HTTP 远程服务<strong>不要</strong>配 stdio 的 <code>command</code> / <code>args</code> / <code>env</code>，那是本地进程型 MCP 用的。</p>
+    <h3>Cursor / Claude Desktop</h3>
+    <pre>{
+  "mcpServers": {
+    "futures-metric": {
+      "type": "http",
+      "url": "http://127.0.0.1:8600/mcp",
+      "headers": {
+        "Authorization": "Bearer &lt;your-api-key&gt;"
+      }
+    }
+  }
+}</pre>
+    <p>SSE 服务把 <code>type</code> 改为 <code>"sse"</code>，<code>url</code> 换成对应 SSE 端点。远程 HTTP MCP 统一这一份 JSON，鉴权为 Bearer API Key。</p>
+    <p>各客户端配置文件位置：</p>
+    <table>
+      <thead><tr><th>客户端</th><th>配置文件路径</th></tr></thead>
+      <tbody>
+        <tr><td>Claude Desktop</td><td><code>~/Library/Application Support/Claude/claude_desktop_config.json</code>（macOS）· <code>%APPDATA%\Claude\claude_desktop_config.json</code>（Windows）</td></tr>
+        <tr><td>Cursor</td><td><code>~/.cursor/mcp.json</code></td></tr>
+        <tr><td>Windsurf</td><td><code>~/.codeium/windsurf/mcp_config.json</code></td></tr>
+        <tr><td>Cline (VS Code)</td><td>命令面板 → Cline: Open MCP Settings</td></tr>
+      </tbody>
+    </table>
+    <p>配好后重启客户端生效。<code>initialize</code> 握手不强制鉴权；<code>tools/list</code> 与 <code>tools/call</code> 必须带 Key。</p>
+  </section>
+
+  <section>
+    <h2>工具一览</h2>
+    <p>当前本地 FastMCP 共注册 8 个工具，覆盖四源产业指标检索、时间序列、EDB 派生指标、汾渭双焦周评与数据新鲜度。</p>
+    <table>
+      <thead>
+        <tr>
+          <th>MCP 服务</th>
+          <th>MCP 端点</th>
+          <th>MCP 工具</th>
+          <th>中文名</th>
+          <th>对应数据</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>futures-metric-mcp</td><td class="mono">/mcp</td><td class="mono">list_metric_sources</td><td>列出指标数据源</td><td>source=1/9/11/34 元数据</td></tr>
+        <tr><td>futures-metric-mcp</td><td class="mono">/mcp</td><td class="mono">list_source_classifies</td><td>数据源分类树</td><td>各源 classify 表</td></tr>
+        <tr><td>futures-metric-mcp</td><td class="mono">/mcp</td><td class="mono">search_source_indexes</td><td>搜索指标</td><td>按 keyword / classify 分页</td></tr>
+        <tr><td>futures-metric-mcp</td><td class="mono">/mcp</td><td class="mono">get_source_series</td><td>指标时间序列</td><td>升序点，最大 5000</td></tr>
+        <tr><td>futures-metric-mcp</td><td class="mono">/mcp</td><td class="mono">get_sxcoal_weekly</td><td>汾渭双焦周评</td><td>炼焦煤 / 焦炭周评</td></tr>
+        <tr><td>futures-metric-mcp</td><td class="mono">/mcp</td><td class="mono">search_edb</td><td>搜索 EDB 指标</td><td>宏观 / 派生运算</td></tr>
+        <tr><td>futures-metric-mcp</td><td class="mono">/mcp</td><td class="mono">get_edb_series</td><td>EDB 时间序列</td><td>edb_series_data，可回源</td></tr>
+        <tr><td>futures-metric-mcp</td><td class="mono">/mcp</td><td class="mono">get_source_freshness</td><td>数据新鲜度</td><td>end_date 逾期（默认 10 天）</td></tr>
+      </tbody>
+    </table>
+    <p><code>search_source_indexes</code> 返回条数等于 <code>size</code> 时递增 <code>current</code> 直到取尽。<code>get_source_series</code> / <code>get_edb_series</code> 先确定 <code>index_code</code> / <code>edb_code</code> 再取序列。</p>
+  </section>
+
+  <section>
+    <h2>AI Agent 跨服务调用场景</h2>
+    <p>不确定指标代码时，先 <code>list_metric_sources</code>（或已知 source）再 <code>search_source_indexes</code>，不要直接猜 <code>index_code</code>。</p>
+    <ol class="steps">
+      <li>
+        <b>「螺纹钢最近价格怎么样？」</b>
+        → <code>search_source_indexes{source:1, keyword:"螺纹钢"}</code>
+        → 选用收盘价指标
+        → <code>get_source_series{source:1, index_code:"S012107757"}</code>
+        → 用最新点生成结论。
+      </li>
+      <li>
+        <b>「焦炭周度供需怎么说？」</b>
+        → <code>get_sxcoal_weekly{article_type:2, limit:3}</code>
+        → 归纳供应 / 需求 / 库存 / 价格。
+      </li>
+      <li>
+        <b>「这个源哪些指标停更了？」</b>
+        → <code>get_source_freshness{source:1}</code>
+        → 按 end_date 列出逾期项。
+      </li>
+      <li>
+        <b>「宏观同比或派生指标」</b>
+        → <code>search_edb{keyword:"…"}</code>
+        → <code>get_edb_series{edb_code:"…"}</code>。
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>与 REST 的差异</h2>
+    <table>
+      <thead><tr><th></th><th>MCP</th><th>管理台 / 直连库</th></tr></thead>
+      <tbody>
+        <tr><td>认证</td><td><code>Authorization: Bearer</code></td><td>管理台会话；库账号不对外</td></tr>
+        <tr><td>调用方式</td><td><code>tools/list</code> · <code>tools/call</code></td><td>控制台表单 / SQL</td></tr>
+        <tr><td>数据一致</td><td>同一套指标表与口径</td><td>同一套指标表与口径</td></tr>
+        <tr><td>传输</td><td>Streamable HTTP（部分知识服务为 SSE）</td><td>HTTPS 控制台</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>接入流程 · MCP 工具概览 · 本地 FastMCP 8 个工具</footer>
+</div>
+</body>
+</html>

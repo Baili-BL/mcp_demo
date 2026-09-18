@@ -269,7 +269,7 @@ onBeforeUnmount(() => {
       <span class="mono">~/Library/Application Support/Claude/claude_desktop_config.json</span>；
       Cursor → <span class="mono">~/.cursor/mcp.json</span>。
       保存后重启客户端，<span class="mono">tools/list</span> 即可拉取工具。
-      完整说明见 <a href="/MCP工具概览.md" target="_blank">MCP 工具概览</a>。
+      完整说明见 <a href="/docs/mcp-tools.html" target="_blank">MCP 工具概览</a>。
     </div>
     <a-alert v-if="store.mcpConfig.once" type="warning" style="margin-top: 12px">
       API Key 仅此一次完整展示，请立即复制保存；遗失请吊销后重新创建。

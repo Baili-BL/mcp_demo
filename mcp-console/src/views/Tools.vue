@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import G2LineChart from '../components/G2LineChart.vue'
-import { store, SCHEMA_TPL, SECTOR_TAG, openPlayground, tagColor, platformOptions } from '../store'
+import { store, SCHEMA_TPL, SECTOR_TAG, openPlayground, tagColor, platformOptions, keyForEndpoint } from '../store'
 import { fmt, srColor } from '../utils'
 
 const toolVisible = ref(false)
@@ -41,6 +41,7 @@ function debugTool(t) {
     endpoint: svc?.endpoint,
     proto: svc?.proto,
     toolName: t.name,
+    apiKey: keyForEndpoint(svc?.endpoint),
   })
 }
 const DAYS = 30
