@@ -6,53 +6,64 @@ const phase = ref('all')
 const hover = ref(null)
 
 const LANES = [
-  { name: '用户 · 研究员', desc: '自然语言提问 / 接收结论', color: '#165dff', icon: 'user' },
+  { name: '用户 · 研究员', desc: '申请账号 / 提问 / 收结论', color: '#165dff', icon: 'user' },
   { name: 'MCP 客户端', desc: 'Cursor / Claude Desktop', color: '#14c9c9', icon: 'desktop' },
-  { name: '开发 / 管理员', desc: '注册服务 · 签发密钥', color: '#ff7d00', icon: 'tool' },
-  { name: '管理台 Console', desc: '注册中心 · 密钥 · 监控', color: '#722ed1', icon: 'apps' },
-  { name: 'MCP 服务端', desc: 'FastMCP · :8600/mcp', color: '#3491fa', icon: 'cloud' },
-  { name: 'MySQL · metric', desc: '4 源指标 + EDB', color: '#0fc6c2', icon: 'storage' },
+  { name: '开发工程师', desc: '实现 MCP · 注册服务与工具', color: '#ff7d00', icon: 'tool' },
+  { name: '管理台 Console', desc: '用户 · 服务 · 密钥 · 监控', color: '#722ed1', icon: 'apps' },
+  { name: 'MCP 服务端', desc: 'FastMCP · 按工具路由上游', color: '#3491fa', icon: 'cloud' },
+  { name: '数据面', desc: '跨平台 / 跨库（指标 · CRM · 数仓）', color: '#0fc6c2', icon: 'storage' },
 ]
 
 const PHASES = [
   { id: 'all', t: '全部阶段' },
-  { id: 'p1', t: '① 注册签发' },
+  { id: 'p0', t: '⓪ 开发介入' },
+  { id: 'p1', t: '① 开通签发' },
   { id: 'p2', t: '② 客户端接入' },
   { id: 'p3', t: '③ 数据调用' },
   { id: 'p4', t: '④ 监控闭环' },
 ]
 
 const ROWS = [
-  { kind: 'phase', id: 'p1', t: '阶段一 · 服务注册与密钥签发（管理台操作，一次性）' },
-  { kind: 'msg', phase: 'p1', no: '1', from: 2, to: 3, dir: 'f', t: '注册新服务', code: '名称 · 端点 · 上游数据源', goto: 'services' },
-  { kind: 'msg', phase: 'p1', no: '2', from: 3, to: 2, dir: 'r', t: '下发客户端配置', code: 'mcpServers JSON', goto: 'services' },
-  { kind: 'msg', phase: 'p1', no: '3', from: 2, to: 3, dir: 'f', t: '创建工具集并签发密钥', code: '绑定到 MCP 工具集 · QPS · 日配额 · 到期', goto: 'services' },
-  { kind: 'msg', phase: 'p1', no: '4', from: 3, to: 5, dir: 'f', t: '写入密钥', code: 'INSERT INTO base_from_mcp_api_key', goto: 'clients' },
-  { kind: 'msg', phase: 'p1', no: '5', from: 3, to: 2, dir: 'r', t: '完整 Key 仅展示一次', code: '含到期时间；过期后拒绝鉴权', goto: 'clients' },
-  { kind: 'msg', phase: 'p1', no: '6', from: 2, to: 0, dir: 'r', t: '分发接入配置给用户', code: 'url + Bearer Key（IM / 邮件 / 工单）', goto: 'clients' },
+  { kind: 'phase', id: 'p0', t: '阶段零 · 开发提前介入（服务实现 · 服务注册 · 工具注册）' },
+  { kind: 'msg', phase: 'p0', no: '1', from: 0, to: 2, dir: 'f', t: '提出数据能力需求', code: '要哪些品种 / 系统 / 工具', goto: 'services' },
+  { kind: 'msg', phase: 'p0', no: '2', from: 2, to: 5, dir: 'f', t: '评审上游边界', code: '哪套库 · 是否跨库 · 只读账号' },
+  { kind: 'msg', phase: 'p0', no: '3', from: 5, to: 2, dir: 'r', t: '返回表结构与口径', code: '禁止在 MCP 层重算口径' },
+  { kind: 'msg', phase: 'p0', no: '4', from: 2, to: 4, dir: 'f', t: '实现 FastMCP 工具', code: '@mcp.tool · snake_case', goto: 'tools' },
+  { kind: 'msg', phase: 'p0', no: '5', from: 2, to: 3, dir: 'f', t: '注册 MCP 服务', code: '名称 · 端点 · 协议 · 上游平台', goto: 'services' },
+  { kind: 'msg', phase: 'p0', no: '6', from: 3, to: 2, dir: 'r', t: '服务已登记', code: '待探测 tools/list', goto: 'services' },
+  { kind: 'msg', phase: 'p0', no: '7', from: 2, to: 3, dir: 'f', t: '注册工具 Schema', code: '探测或手工提交 · 编入工具集', goto: 'tools' },
+  { kind: 'msg', phase: 'p0', no: '8', from: 3, to: 4, dir: 'f', t: '核对 tools/list', code: '与目录不一致则保持待发布' },
+  { kind: 'msg', phase: 'p0', no: '9', from: 4, to: 3, dir: 'r', t: '返回工具清单', code: 'name + inputSchema', goto: 'tools' },
+  { kind: 'phase', id: 'p1', t: '阶段一 · 用户开通与密钥签发' },
+  { kind: 'msg', phase: 'p1', no: '10', from: 2, to: 3, dir: 'f', t: '生成邀请链接', code: '内部员工 / 外部客户 · 7 天', goto: 'users' },
+  { kind: 'msg', phase: 'p1', no: '11', from: 3, to: 0, dir: 'r', t: '发放注册链接', code: '#register?t=inv-…', goto: 'users' },
+  { kind: 'msg', phase: 'p1', no: '12', from: 0, to: 3, dir: 'f', t: '填写手机与登录邮箱', code: '完成注册后账号为正常', goto: 'users' },
+  { kind: 'msg', phase: 'p1', no: '13', from: 2, to: 3, dir: 'f', t: '签发密钥并绑定工具集', code: 'QPS · 日配额 · 到期 · 归属用户', goto: 'clients' },
+  { kind: 'msg', phase: 'p1', no: '14', from: 3, to: 5, dir: 'f', t: '写入密钥', code: 'INSERT INTO base_from_mcp_api_key', goto: 'clients' },
+  { kind: 'msg', phase: 'p1', no: '15', from: 3, to: 2, dir: 'r', t: '完整 Key 仅展示一次', code: '含到期时间；过期后拒绝鉴权', goto: 'clients' },
+  { kind: 'msg', phase: 'p1', no: '16', from: 2, to: 0, dir: 'r', t: '分发接入配置', code: 'url + Bearer Key', goto: 'clients' },
   { kind: 'phase', id: 'p2', t: '阶段二 · 客户端接入（initialize / tools/list）' },
-  { kind: 'msg', phase: 'p2', no: '7', from: 0, to: 1, dir: 'f', t: '粘贴配置并重启', code: '~/.cursor/mcp.json', goto: 'clients' },
-  { kind: 'msg', phase: 'p2', no: '8', from: 1, to: 4, dir: 'f', t: 'initialize', code: '协议协商（Streamable HTTP，握手无需鉴权）' },
-  { kind: 'msg', phase: 'p2', no: '9', from: 4, to: 1, dir: 'r', t: 'serverInfo', code: 'futures-metric-mcp · 工具使用说明' },
-  { kind: 'msg', phase: 'p2', no: '10', from: 1, to: 4, dir: 'f', t: 'tools/list', code: 'Authorization: Bearer <api_key>', goto: 'clients' },
-  { kind: 'msg', phase: 'p2', no: '11', from: 4, to: 5, dir: 'f', t: '校验 Key', code: 'base_from_mcp_api_key', goto: 'clients' },
-  { kind: 'msg', phase: 'p2', no: '12', from: 4, to: 1, dir: 'r', t: '返回 8 个工具 Schema', code: 'list_metric_sources / search_source_indexes / get_source_series …', goto: 'tools' },
+  { kind: 'msg', phase: 'p2', no: '17', from: 0, to: 1, dir: 'f', t: '粘贴配置并重启', code: '~/.cursor/mcp.json', goto: 'clients' },
+  { kind: 'msg', phase: 'p2', no: '18', from: 1, to: 4, dir: 'f', t: 'initialize', code: '协议协商（握手无需鉴权）' },
+  { kind: 'msg', phase: 'p2', no: '19', from: 4, to: 1, dir: 'r', t: 'serverInfo', code: 'futures-metric-mcp · 工具使用说明' },
+  { kind: 'msg', phase: 'p2', no: '20', from: 1, to: 4, dir: 'f', t: 'tools/list', code: 'Authorization: Bearer <api_key>', goto: 'clients' },
+  { kind: 'msg', phase: 'p2', no: '21', from: 4, to: 5, dir: 'f', t: '校验 Key', code: 'base_from_mcp_api_key', goto: 'clients' },
+  { kind: 'msg', phase: 'p2', no: '22', from: 4, to: 1, dir: 'r', t: '返回已授权工具 Schema', code: '仅工具集内可见', goto: 'tools' },
   { kind: 'note', phase: 'p2', lane: 5, t: '鉴权结果', em: '内存缓存 60s', rest: '，避免每次 tools/call 打库' },
-  { kind: 'msg', phase: 'p2', no: '✕', from: 4, to: 1, dir: 'err', t: '无 Key / 错 Key → 拒绝', code: '记录 phase=AUTH_FAIL（IP + 时间）', goto: 'clients' },
-  { kind: 'phase', id: 'p3', t: '阶段三 · 数据调用（示例：「螺纹钢最近价格？」→ 真实 SQL）' },
-  { kind: 'msg', phase: 'p3', no: '13', from: 0, to: 1, dir: 'f', t: '自然语言提问', code: '「螺纹钢最近价格怎么样？」' },
-  { kind: 'msg', phase: 'p3', no: '14', from: 1, to: 4, dir: 'f', t: 'tools/call', code: 'search_source_indexes{source:1, keyword:"螺纹钢"}', goto: 'tools' },
-  { kind: 'msg', phase: 'p3', no: '15', from: 4, to: 5, dir: 'f', t: '路由 source=1', code: 'base_from_ths_index' },
-  { kind: 'msg', phase: 'p3', no: '16', from: 5, to: 4, dir: 'r', t: '17 条指标', code: 'S012107757 期货收盘价(活跃):螺纹钢' },
-  { kind: 'msg', phase: 'p3', no: '17', from: 1, to: 4, dir: 'f', t: 'tools/call', code: 'get_source_series{index_code:"S012107757"}', goto: 'tools' },
-  { kind: 'msg', phase: 'p3', no: '18', from: 4, to: 5, dir: 'f', t: '取序列', code: 'base_from_ths_data' },
-  { kind: 'msg', phase: 'p3', no: '19', from: 5, to: 4, dir: 'r', t: '时间序列点', code: '2026-09-16 · 3126.0 元/吨' },
-  { kind: 'note', phase: 'p3', lane: 5, t: '异步写调用日志', em: 'logs/invoke_log.jsonl', rest: '（可写库时双写 invoke_log 表）' },
-  { kind: 'msg', phase: 'p3', no: '20', from: 4, to: 1, dir: 'r', t: '返回结构化结果', code: 'meta + points（升序，最大 5000 点保护）', goto: 'tools' },
-  { kind: 'msg', phase: 'p3', no: '21', from: 1, to: 0, dir: 'r', t: 'LLM 生成结论', code: '「螺纹钢最新 3126 元/吨（09-16）…」' },
-  { kind: 'phase', id: 'p4', t: '阶段四 · 监控闭环（调用可观测 + 数据质量巡检）' },
-  { kind: 'msg', phase: 'p4', no: '22', from: 5, to: 3, dir: 'r', t: '读取调用日志', code: 'base_from_mcp_invoke_log → 调用量 / 延迟 / 错误', goto: 'monitor' },
-  { kind: 'msg', phase: 'p4', no: '23', from: 3, to: 2, dir: 'r', t: '监控视图 + 告警', code: '错误率 Top · 密钥配额 · 逾期指标', goto: 'alerts' },
+  { kind: 'msg', phase: 'p2', no: '✕', from: 4, to: 1, dir: 'err', t: '无 Key / 错 Key → 拒绝', code: '记录 phase=AUTH_FAIL', goto: 'clients' },
+  { kind: 'phase', id: 'p3', t: '阶段三 · 数据调用（可跨服务，禁止单工具跨库 JOIN）' },
+  { kind: 'msg', phase: 'p3', no: '23', from: 0, to: 1, dir: 'f', t: '自然语言提问', code: '「螺纹钢价格 + 对应客户盈亏」' },
+  { kind: 'msg', phase: 'p3', no: '24', from: 1, to: 4, dir: 'f', t: 'tools/call', code: 'search_source_indexes{source:1, keyword:"螺纹钢"}', goto: 'tools' },
+  { kind: 'msg', phase: 'p3', no: '25', from: 4, to: 5, dir: 'f', t: '路由到指标库', code: 'METRIC_DSN · base_from_ths_*' },
+  { kind: 'msg', phase: 'p3', no: '26', from: 5, to: 4, dir: 'r', t: '指标与序列', code: 'S012107757 · 3126 元/吨' },
+  { kind: 'msg', phase: 'p3', no: '27', from: 1, to: 4, dir: 'f', t: 'tools/call（另一工具）', code: 'query_warehouse{dataset_id:"dw.ads_variety_pnl_d"}', goto: 'tools' },
+  { kind: 'msg', phase: 'p3', no: '28', from: 4, to: 5, dir: 'f', t: '路由到数仓', code: 'DW_DSN · 不 JOIN CRM' },
+  { kind: 'note', phase: 'p3', lane: 5, t: '跨平台', em: 'Agent 拼结果', rest: '，MCP 不在一个 SQL 里打两套库' },
+  { kind: 'msg', phase: 'p3', no: '29', from: 4, to: 1, dir: 'r', t: '返回结构化结果', code: 'meta + points / rows', goto: 'tools' },
+  { kind: 'msg', phase: 'p3', no: '30', from: 1, to: 0, dir: 'r', t: 'LLM 生成结论', code: '价格 + 盈亏分述并引用工具' },
+  { kind: 'phase', id: 'p4', t: '阶段四 · 监控闭环' },
+  { kind: 'msg', phase: 'p4', no: '31', from: 5, to: 3, dir: 'r', t: '读取调用日志', code: 'invoke_log → 按上游拆延迟', goto: 'monitor' },
+  { kind: 'msg', phase: 'p4', no: '32', from: 3, to: 2, dir: 'r', t: '监控视图 + 告警', code: '错误率 · 配额 · 逾期指标', goto: 'alerts' },
 ]
 
 const visible = computed(() => ROWS.filter((r) => {
@@ -79,7 +90,7 @@ function laneOn(i) {
 function onMsg(row) {
   if (row.goto) emit('goto', row.goto)
 }
-const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '工具目录', monitor: '调用监控', alerts: '告警中心' }
+const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '工具目录', monitor: '调用监控', alerts: '告警中心', users: '用户管理' }
 </script>
 
 <template>
@@ -87,7 +98,7 @@ const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '
     <div class="page-head">
       <div>
         <h2>时序图</h2>
-        <div class="desc">六个角色、四阶段，与当前 MCP 实现一一对应。点击蓝色步骤可跳到对应控制台页面。</div>
+        <div class="desc">开发先实现并注册服务/工具，再发邀请链接开通用户、签发密钥。点击蓝色步骤跳到对应控制台页。</div>
       </div>
       <a-button href="/MCP时序信息流.html" target="_blank">
         <template #icon><icon-launch /></template>新窗口
@@ -179,10 +190,10 @@ const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '
       <a-col :xs="24" :md="8" style="margin-bottom: 16px">
         <a-card title="数据源路由" :bordered="false" hoverable class="stat-card" @click="emit('goto', 'tools')">
           <ul class="seq-ul">
-            <li><span class="mono">1</span> 同花顺 → <span class="mono">base_from_ths_*</span></li>
-            <li><span class="mono">9</span> SMM → <span class="mono">base_from_smm_*</span></li>
-            <li><span class="mono">11</span> 上海钢联(化工) → <span class="mono">base_from_mysteel_chemical_*</span></li>
-            <li><span class="mono">34</span> 手工录入；EDB 双路径自动回源</li>
+            <li><span class="mono">1</span> 同花顺 / SMM / 钢联 → 指标库 <span class="mono">METRIC_DSN</span></li>
+            <li>CRM 工具只打 <span class="mono">CRM_DSN</span>；数仓工具只打 <span class="mono">DW_DSN</span></li>
+            <li>跨平台由 Agent 连续调两个工具，禁止单 SQL JOIN 两套库</li>
+            <li>错误码带上游名，限流按源分别计算</li>
           </ul>
         </a-card>
       </a-col>

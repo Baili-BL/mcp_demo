@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP Service — Icon Spec</title>
+<style>
+  :root {
+    --paper: #FAF9F7;
+    --ink: #1B1E22;
+    --ink-2: #5C6066;
+    --ink-3: #9A9EA4;
+    --line: #E6E4DF;
+    --accent: #D9480F;
+    --card: #FFFFFF;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: "Space Grotesk", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 72px 40px 120px; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(280px, 380px) 1fr;
+    gap: 64px;
+    align-items: center;
+    padding-bottom: 72px;
+    border-bottom: 1px solid var(--line);
+  }
+  .hero-icon { width: 100%; max-width: 380px; }
+  .hero-icon img { width: 100%; height: auto; display: block; filter: drop-shadow(0 24px 48px rgba(27,30,34,.12)); }
+  .kicker {
+    font-size: 12px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin-bottom: 16px;
+  }
+  h1 {
+    font-size: clamp(34px, 4.6vw, 52px);
+    font-weight: 600; letter-spacing: -0.02em; line-height: 1.12;
+    margin-bottom: 20px;
+  }
+  .lede { color: var(--ink-2); font-size: 16px; max-width: 46ch; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- sections ---------- */
+  section { padding-top: 72px; }
+  h2 {
+    font-size: 13px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600; margin-bottom: 32px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  /* rationale */
+  .rationale { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .rationale figure {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 28px; display: grid; grid-template-columns: 96px 1fr; gap: 24px; align-items: center;
+  }
+  .rationale img { width: 96px; height: 96px; }
+  .rationale h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .rationale p { font-size: 13.5px; color: var(--ink-2); }
+
+  /* variants */
+  .variants { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .variant {
+    border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+    background: var(--card);
+  }
+  .variant .canvas {
+    aspect-ratio: 1; display: grid; place-items: center; padding: 28px;
+  }
+  .variant .canvas img { width: 100%; height: 100%; object-fit: contain; }
+  .variant .canvas.checker {
+    background:
+      linear-gradient(45deg, #F0EEEA 25%, transparent 25%, transparent 75%, #F0EEEA 75%),
+      linear-gradient(45deg, #F0EEEA 25%, transparent 25%, transparent 75%, #F0EEEA 75%),
+      #FFFFFF;
+    background-size: 24px 24px; background-position: 0 0, 12px 12px;
+  }
+  .variant figcaption { padding: 14px 18px; border-top: 1px solid var(--line); }
+  .variant figcaption b { display: block; font-size: 13.5px; font-weight: 600; }
+  .variant figcaption span { font-size: 12px; color: var(--ink-3); font-family: ui-monospace, "SF Mono", monospace; }
+
+  /* size ladder */
+  .ladder {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 48px 40px; display: flex; align-items: flex-end; gap: 48px; flex-wrap: wrap;
+  }
+  .step { display: grid; justify-items: center; gap: 14px; }
+  .step img { display: block; }
+  .step span { font-size: 11.5px; color: var(--ink-3); font-family: ui-monospace, "SF Mono", monospace; }
+
+  /* construction */
+  .construction {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  }
+  .construction figure {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 32px;
+    display: grid; place-items: center;
+  }
+  .construction img { width: 100%; max-width: 400px; }
+  .construction figcaption {
+    grid-column: 1 / -1; padding-top: 20px; font-size: 13.5px; color: var(--ink-2);
+    border-top: 1px solid var(--line); margin-top: 24px;
+  }
+
+  /* tokens */
+  .tokens { display: flex; gap: 16px; flex-wrap: wrap; }
+  .token {
+    border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+    padding: 16px 20px; display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: center;
+    min-width: 200px;
+  }
+  .token .swatch { width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(0,0,0,.08); }
+  .token b { font-size: 13px; display: block; }
+  .token code { font-size: 11.5px; color: var(--ink-3); font-family: ui-monospace, "SF Mono", monospace; }
+
+  footer { margin-top: 88px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; gap: 40px; }
+    .hero-icon { max-width: 240px; margin: 0 auto; }
+    .rationale, .construction { grid-template-columns: 1fr; }
+    .variants { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-icon">
+      <img src="mcp-icon-light-accent.svg" alt="MCP Service 图标">
+    </div>
+    <div>
+      <p class="kicker">Icon Spec · v1.0</p>
+      <h1>MCP Service<br>服务图标</h1>
+      <p class="lede">
+        参考图的路线是对的——<strong>圆角方底 + 描边字母</strong>，克制、工程感。我在此基础上加了一层语义：
+        M 的四个笔画端点被处理成<strong>连接端子</strong>。MCP 是协议，协议的本质是端点之间的连接——字形自己讲这件事，
+        不需要额外的箭头或插头符号。
+      </p>
+    </div>
+  </header>
+
+  <!-- RATIONALE -->
+  <section>
+    <h2>为什么这样画</h2>
+    <div class="rationale">
+      <figure>
+        <img src="mcp-icon-light-accent.svg" alt="">
+        <div>
+          <h3>M 即拓扑</h3>
+          <p>M 的笔画同时是一张最小连接图：两个下端点是服务端，两个上端点是客户端，中间谷点是路由。协议图标最怕画成"插头+齿轮"的俗套，让字母承担拓扑含义就绕开了。</p>
+        </div>
+      </figure>
+      <figure>
+        <img src="mcp-icon-light-mono.svg" alt="">
+        <div>
+          <h3>端子的分寸</h3>
+          <p>端子只在四个笔画终点出现，中间谷点保持圆角连接不打断——两个"会话终点"是实心语言，一处"途经点"不是。端子留了背景色描边，与笔画之间有呼吸缝，小尺寸下不糊。</p>
+        </div>
+      </figure>
+      <figure>
+        <img src="mcp-icon-dark-accent.svg" alt="">
+        <div>
+          <h3>一套几何，两种皮肤</h3>
+          <p>浅色底 #FAF9F7（暖白，不是纯白）、深色底 #17191E。笔画色随底反转，端子强调色在深色下提亮为 #FF6B2C，保证对比度不掉。</p>
+        </div>
+      </figure>
+      <figure>
+        <img src="mcp-icon-glyph.svg" alt="" style="color:#1B1E22">
+        <div>
+          <h3>16px 也站得住</h3>
+          <p>透明底 glyph 用 currentColor，笔画加粗到 80，去掉端子细节。favicon、列表头像、标签页里只保留字形骨架——这是它还能被认出来的最小单位。</p>
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- VARIANTS -->
+  <section>
+    <h2>全部变体</h2>
+    <div class="variants">
+      <figure class="variant">
+        <div class="canvas"><img src="mcp-icon-light-accent.svg" alt=""></div>
+        <figcaption><b>浅色 · 端子强调</b><span>mcp-icon-light-accent.svg</span></figcaption>
+      </figure>
+      <figure class="variant">
+        <div class="canvas"><img src="mcp-icon-light-mono.svg" alt=""></div>
+        <figcaption><b>浅色 · 纯黑白</b><span>mcp-icon-light-mono.svg</span></figcaption>
+      </figure>
+      <figure class="variant">
+        <div class="canvas" style="background:#101216"><img src="mcp-icon-dark-accent.svg" alt=""></div>
+        <figcaption><b>深色 · 端子强调</b><span>mcp-icon-dark-accent.svg</span></figcaption>
+      </figure>
+      <figure class="variant">
+        <div class="canvas checker"><img src="mcp-icon-glyph.svg" alt="" style="color:#1B1E22"></div>
+        <figcaption><b>透明底 Glyph</b><span>mcp-icon-glyph.svg</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- SIZE LADDER -->
+  <section>
+    <h2>尺寸梯度</h2>
+    <div class="ladder">
+      <div class="step"><img src="mcp-icon-light-accent.svg" width="256" height="256" alt=""><span>256</span></div>
+      <div class="step"><img src="mcp-icon-light-accent.svg" width="128" height="128" alt=""><span>128</span></div>
+      <div class="step"><img src="mcp-icon-light-accent.svg" width="64" height="64" alt=""><span>64</span></div>
+      <div class="step"><img src="mcp-icon-light-accent.svg" width="32" height="32" alt=""><span>32</span></div>
+      <div class="step"><img src="mcp-icon-glyph.svg" width="16" height="16" style="color:#1B1E22" alt=""><span>16 · glyph</span></div>
+    </div>
+  </section>
+
+  <!-- CONSTRUCTION -->
+  <section>
+    <h2>构造网格</h2>
+    <div class="construction">
+      <figure>
+        <img src="construction-grid.svg" alt="构造网格">
+        <figcaption>
+          1024 画布 · 内容安全区居中，笔画宽 74（约 7.2%）。M 整体宽 388、高 408，
+          光学重心略低于几何中心——App 图标下沉一点更稳。圆角 230 ≈ 边长的 22.4%，贴近 iOS squircle 手感，
+          又不依赖平台私有曲线。
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="mcp-icon-light-mono.svg" alt="成品对照">
+        <figcaption>
+          成品对照。单一路径（5 个点、4 段线）+ 4 个端子圆，全部几何均可参数化——
+          改字号比例、改强调色、改圆角，都是改一个数字的事。
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- TOKENS -->
+  <section>
+    <h2>颜色令牌</h2>
+    <div class="tokens">
+      <div class="token"><div class="swatch" style="background:#FAF9F7"></div><div><b>纸面 · 浅色底</b><code>#FAF9F7</code></div></div>
+      <div class="token"><div class="swatch" style="background:#17191E"></div><div><b>墨面 · 深色底</b><code>#17191E</code></div></div>
+      <div class="token"><div class="swatch" style="background:#23262B"></div><div><b>笔画 · 浅色场景</b><code>#23262B</code></div></div>
+      <div class="token"><div class="swatch" style="background:#ECEAE5"></div><div><b>笔画 · 深色场景</b><code>#ECEAE5</code></div></div>
+      <div class="token"><div class="swatch" style="background:#D9480F"></div><div><b>端子 · 浅色</b><code>#D9480F</code></div></div>
+      <div class="token"><div class="swatch" style="background:#FF6B2C"></div><div><b>端子 · 深色</b><code>#FF6B2C</code></div></div>
+    </div>
+  </section>
+
+  <footer>
+    MCP Service Icon Spec — 4 个 SVG 源文件 + 构造网格，均在本目录。SVG 可无损缩放；需要 PNG 导出（1024/512/128）随时说。
+  </footer>
+
+</div>
+</body>
+</html>

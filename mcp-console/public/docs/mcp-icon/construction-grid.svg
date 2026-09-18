@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Construction grid overlay -->
+  <defs>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M 64 0 L 0 0 0 64" fill="none" stroke="#D9480F" stroke-opacity="0.10" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#FFFFFF"/>
+  <rect width="1024" height="1024" fill="url(#grid)"/>
+
+  <!-- safe area -->
+  <rect x="192" y="192" width="640" height="640" fill="none" stroke="#D9480F" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="10 8"/>
+
+  <!-- center axes -->
+  <line x1="512" y1="0" x2="512" y2="1024" stroke="#D9480F" stroke-opacity="0.3" stroke-width="2" stroke-dasharray="10 8"/>
+  <line x1="0" y1="540" x2="1024" y2="540" stroke="#D9480F" stroke-opacity="0.3" stroke-width="2" stroke-dasharray="10 8"/>
+
+  <!-- squircle outline -->
+  <rect x="8" y="8" width="1008" height="1008" rx="230" fill="none" stroke="#1B1E22" stroke-opacity="0.25" stroke-width="2"/>
+
+  <!-- M skeleton -->
+  <path d="M 318 744 L 318 336 L 512 570 L 706 336 L 706 744"
+        fill="none" stroke="#1B1E22" stroke-width="74"
+        stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.85"/>
+
+  <!-- terminal circles -->
+  <g fill="none" stroke="#D9480F" stroke-width="4" stroke-dasharray="6 6">
+    <circle cx="318" cy="744" r="46"/>
+    <circle cx="318" cy="336" r="46"/>
+    <circle cx="706" cy="336" r="46"/>
+    <circle cx="706" cy="744" r="46"/>
+  </g>
+
+  <!-- measurements -->
+  <g font-family="ui-monospace, 'SF Mono', monospace" font-size="26" fill="#D9480F">
+    <!-- width 388 -->
+    <line x1="318" y1="820" x2="706" y2="820" stroke="#D9480F" stroke-width="2"/>
+    <text x="512" y="862" text-anchor="middle">388</text>
+    <!-- height 408 -->
+    <line x1="790" y1="336" x2="790" y2="744" stroke="#D9480F" stroke-width="2"/>
+    <text x="812" y="548">408</text>
+    <!-- stroke width -->
+    <text x="240" y="300" text-anchor="middle">74</text>
+  </g>
+</svg>

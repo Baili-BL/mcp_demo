@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP 服务代码规范</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Engineering · FastMCP</p>
+  <h1>MCP 服务代码规范</h1>
+  <p class="lede">
+    给要实现或接入 MCP 的开发工程师。内部系统<strong>不等于可以随便跨库</strong>。
+    行情、钢联、CRM、数仓可能不在同一实例，MCP 层只做薄包装与路由，不在工具里拼一套新的数仓。
+  </p>
+  <div class="callout">先按《工程开发流程图》走完实现与注册，再对照本节写代码。</div>
+
+  <section>
+    <h2>三条原则</h2>
+    <ul>
+      <li><b>薄包装</b>：工具只查既有接口或只读 SQL，不重算业务口径。</li>
+      <li><b>语义一致</b>：返回字段与源系统一致（代码、单位、时间点）。</li>
+      <li><b>错误透传</b>：鉴权失败、参数非法、上游超时用 <code>ToolError</code> / 网关状态码，不吞掉。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>工程结构</h2>
+    <pre>server.py    # FastMCP 注册、鉴权中间件、tools/list 说明
+db.py        # 每上游一个路由函数，禁止在此写业务口径
+.env         # 多数据源连接串；不要提交仓库
+logs/        # invoke_log.jsonl；可写库时再双写 invoke_log 表</pre>
+    <p>工具名 <code>snake_case</code>，与 <code>base_from_mcp_invoke_log.tool_name</code> 对齐。新增工具先改代码，再在管理台探测注册。</p>
+  </section>
+
+  <section>
+    <h2>跨平台 / 跨数据库</h2>
+    <table>
+      <thead><tr><th>做法</th><th>允许</th><th>禁止</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>一服务多上游</td>
+          <td>分析 MCP 内 <code>search_crm_*</code> 走 CRM，<code>query_warehouse</code> 走数仓</td>
+          <td>一个 tool 里 JOIN CRM 表和数仓表</td>
+        </tr>
+        <tr>
+          <td>连接</td>
+          <td>每源独立连接池、独立超时、只读账号</td>
+          <td>共用一个「万能」库账号打生产写库</td>
+        </tr>
+        <tr>
+          <td>配置</td>
+          <td><code>CRM_DSN</code> / <code>DW_DSN</code> / <code>METRIC_DSN</code> 分环境变量</td>
+          <td>把三套库写进同一个 <code>DB_HOST</code></td>
+        </tr>
+        <tr>
+          <td>失败</td>
+          <td>错误信息带上游名；部分失败不要假装全成功</td>
+          <td>catch 后返回空数组当「没数据」</td>
+        </tr>
+        <tr>
+          <td>事务</td>
+          <td>只读查询；日志异步写</td>
+          <td>跨库分布式事务</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      需要「客户 + 品种盈亏」时：Agent 先调 CRM 工具拿客户，再调数仓工具拿盈亏，在对话层拼接。
+      不要为了方便在 MCP 里开一个跨库 SQL。
+    </div>
+  </section>
+
+  <section>
+    <h2>工具实现约定</h2>
+    <ul>
+      <li>参数全部校验；日期、枚举、limit 上限（序列 ≤ 5000 行）写进 description。</li>
+      <li>SQL 参数化，禁止字符串拼接。</li>
+      <li><code>initialize</code> 可不鉴权；<code>tools/list</code> 与 <code>tools/call</code> 必须 Bearer Key。</li>
+      <li>鉴权结果内存缓存 ≤ 60s；过期与 429 分开。</li>
+      <li>日志：key / tool / 上游 / 耗时 / 行数 / 脱敏后的 args。</li>
+    </ul>
+    <pre>@mcp.tool
+def query_warehouse(dataset_id: str, limit: int = 500) -> dict:
+    """按数据集从数仓取数。不访问 CRM。"""
+    if limit > 5000:
+        raise ToolError("limit 上限 5000")
+    return dw.query(dataset_id, limit=limit)  # 只打 DW_DSN</pre>
+  </section>
+
+  <section>
+    <h2>上线检查单</h2>
+    <ul>
+      <li>本地 <code>MCP_AUTH_REQUIRED=0</code> 仅本机；预发 / 生产必须开鉴权。</li>
+      <li>管理台服务注册的端点与协议，和客户端 JSON 的 <code>type</code> / <code>url</code> 一致。</li>
+      <li><code>tools/list</code> 与控制台工具目录一致后再建工具集、再发 Key。</li>
+      <li>每个上游有独立超时与告警；不要让慢的数仓拖死行情工具的 P95。</li>
+    </ul>
+  </section>
+
+  <footer>开发规范 · MCP 服务代码规范 · 对照 futures-mcp-server/server.py 与 db.py</footer>
+</div>
+</body>
+</html>

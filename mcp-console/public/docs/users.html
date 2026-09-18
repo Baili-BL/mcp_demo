@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用户管理与注册</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Product Design · 用户</p>
+  <h1>用户管理与注册</h1>
+  <p class="lede">
+    账号按<strong>内部员工</strong>与<strong>外部客户</strong>分开。管理员邀请时给出注册链接，对方用<strong>手机号 + 登录邮箱</strong>完成注册，而不是管理员代填联系方式。
+  </p>
+
+  <section>
+    <h2>两类账号</h2>
+    <table>
+      <thead><tr><th></th><th>内部员工</th><th>外部客户</th></tr></thead>
+      <tbody>
+        <tr><td>对象</td><td>分公司同事（数智中心、投研组等）</td><td>产业客户、合作方</td></tr>
+        <tr><td>开通</td><td>邀请链接，或内部自助申请（需审批）</td><td>只能持邀请链接注册</td></tr>
+        <tr><td>登录</td><td>手机号或企业邮箱</td><td>手机号或登录邮箱</td></tr>
+        <tr><td>密钥</td><td>按角色签发，可较高配额</td><td>默认 90 天、低配额</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>邀请：给链接，不代填</h2>
+    <ol class="steps">
+      <li>管理员选择身份：内部员工 / 外部客户，填写团队或客户公司，可选填受邀人姓名。</li>
+      <li>生成链接 <code>#register?t=inv-…</code>，复制发给对方，7 天有效。</li>
+      <li>对方打开链接，填写姓名、手机号、登录邮箱。提交后状态为「正常」。</li>
+      <li>管理员再在「接入与密钥」把 Key 挂到该账号。</li>
+    </ol>
+    <div class="callout">
+      <b>原则：</b>先有人，再有 Key。邀请只证明「允许谁来注册」，手机与登录邮箱必须由本人填写。
+    </div>
+  </section>
+
+  <section>
+    <h2>角色</h2>
+    <table>
+      <thead><tr><th>角色</th><th>适用</th><th>能做什么</th></tr></thead>
+      <tbody>
+        <tr><td>管理员 / 开发 / 研究员</td><td>内部员工</td><td>管理、登记工具或使用已授权工具集</td></tr>
+        <tr><td>客户</td><td>外部客户</td><td>仅自己的配置与已授权工具集，看不到别人的 Key</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>状态机</h2>
+    <p><code>待注册</code>（链接未用）→ <code>正常</code>。内部自助申请为 <code>待审批</code> → <code>正常</code>。均可 <code>停用</code>（名下 Key 全部失效）。</p>
+  </section>
+
+  <footer>产品设计 · 用户管理与注册 · 与控制台「用户管理」页面对齐</footer>
+</div>
+</body>
+</html>

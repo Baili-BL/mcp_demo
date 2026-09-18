@@ -86,11 +86,24 @@ export const store = reactive({
     { name: 'run_stat_analysis', cn: '统计与相关性分析', svc: 'anl', sector: '数仓', version: 'v0.8.0', calls: 255, sr: 97.8, lat: 1480, on: true, desc: '对选定数据集做描述性统计、分组对比或相关系数，返回结构化结果。', schema: { type: 'object', properties: { dataset_id: { type: 'string' }, method: { type: 'string', enum: ['describe', 'groupby', 'corr'], description: '分析方法', default: 'describe' }, group_by: { type: 'string', description: 'groupby 时的维度列' }, columns: { type: 'array', items: { type: 'string' }, description: '分析列，默认数值列' } }, required: ['dataset_id'] }, week: [160, 188, 201, 220, 248, 232, 255], errs: [{ t: '16:40', code: 'MCP_ERR_UPSTREAM_TIMEOUT', msg: '宽表 corr 计算超过 15s，已降级抽样' }] },
   ],
   clients: [
-    { id: 'ck-claude', name: 'Claude Desktop', type: '桌面助手', tag: 'purple', key: 'mcp-sk-a3f8…9c2e', calls: 12408, quota: 50000, qps: 10, status: 'normal', expire: '2026-12-31 23:59:59', last: '10 秒前', toolsetIds: ['ts-market'] },
-    { id: 'ck-cursor', name: 'Cursor', type: 'IDE 插件', tag: 'cyan', key: 'mcp-sk-77b1…04fa', calls: 8932, quota: 30000, qps: 20, status: 'normal', expire: '2026-09-24 23:59:59', last: '32 秒前', toolsetIds: ['ts-market', 'ts-fund'] },
-    { id: 'ck-agent', name: '自研投研 Agent', type: '服务端应用', tag: 'blue', key: 'mcp-sk-e5d2…88aa', calls: 5210, quota: 100000, qps: 50, status: 'normal', expire: null, last: '1 分钟前', toolsetIds: ['ts-market', 'ts-fund', 'ts-analytics'] },
-    { id: 'ck-bot', name: '数据校验 Bot', type: '服务端应用', tag: 'blue', key: 'mcp-sk-1b9c…f377', calls: 1179, quota: 10000, qps: 5, status: 'limited', expire: '2026-12-31 23:59:59', last: '4 分钟前', toolsetIds: ['ts-fund'] },
-    { id: 'ck-trial', name: '合作方试用', type: '服务端应用', tag: 'gray', key: 'mcp-sk-9e01…c4b2', calls: 86, quota: 5000, qps: 5, status: 'normal', expire: '2026-09-10 23:59:59', last: '3 天前', toolsetIds: ['ts-analytics'] },
+    { id: 'ck-claude', name: 'Claude Desktop', type: '桌面助手', tag: 'purple', key: 'mcp-sk-a3f8…9c2e', calls: 12408, quota: 50000, qps: 10, status: 'normal', expire: '2026-12-31 23:59:59', last: '10 秒前', toolsetIds: ['ts-market'], userId: 'u-an' },
+    { id: 'ck-cursor', name: 'Cursor', type: 'IDE 插件', tag: 'cyan', key: 'mcp-sk-77b1…04fa', calls: 8932, quota: 30000, qps: 20, status: 'normal', expire: '2026-09-24 23:59:59', last: '32 秒前', toolsetIds: ['ts-market', 'ts-fund'], userId: 'u-an' },
+    { id: 'ck-agent', name: '自研投研 Agent', type: '服务端应用', tag: 'blue', key: 'mcp-sk-e5d2…88aa', calls: 5210, quota: 100000, qps: 50, status: 'normal', expire: null, last: '1 分钟前', toolsetIds: ['ts-market', 'ts-fund', 'ts-analytics'], userId: 'u-dev' },
+    { id: 'ck-bot', name: '数据校验 Bot', type: '服务端应用', tag: 'blue', key: 'mcp-sk-1b9c…f377', calls: 1179, quota: 10000, qps: 5, status: 'limited', expire: '2026-12-31 23:59:59', last: '4 分钟前', toolsetIds: ['ts-fund'], userId: 'u-dev' },
+    { id: 'ck-trial', name: '合作方试用', type: '服务端应用', tag: 'gray', key: 'mcp-sk-9e01…c4b2', calls: 86, quota: 5000, qps: 5, status: 'normal', expire: '2026-09-10 23:59:59', last: '3 天前', toolsetIds: ['ts-analytics'], userId: 'u-cust' },
+  ],
+  users: [
+    { id: 'u-admin', name: '陈可', email: 'chenke@example.com', phone: '13800001001', kind: 'staff', role: '管理员', tag: 'red', team: '数智中心', status: '正常', created: '2026-08-01', last: '10 分钟前' },
+    { id: 'u-dev', name: '林舟', email: 'linzhou@example.com', phone: '13800001002', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数智中心', status: '正常', created: '2026-08-12', last: '1 小时前' },
+    { id: 'u-an', name: '周研', email: 'zhouyan@example.com', phone: '13800001003', kind: 'staff', role: '研究员', tag: 'green', team: '有色组', status: '正常', created: '2026-09-02', last: '昨天' },
+    { id: 'u-cust', name: '苏岚', email: 'sulan@tongye.example', phone: '13900002001', kind: 'customer', role: '客户', tag: 'gray', team: '某铜业集团', status: '正常', created: '2026-09-10', last: '3 天前' },
+    { id: 'u-wait', name: '王启', email: '', phone: '', kind: 'staff', role: '研究员', tag: 'green', team: '能化组', status: '待注册', created: '2026-09-17', last: '—', inviteToken: 'inv-staff-demo' },
+    { id: 'u-cust-wait', name: '待注册', email: '', phone: '', kind: 'customer', role: '客户', tag: 'gray', team: '华东贸易', status: '待注册', created: '2026-09-18', last: '—', inviteToken: 'inv-cust-demo' },
+    { id: 'u-app', name: '赵衡', email: 'zhaoheng@example.com', phone: '13700001005', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数据分析', status: '待审批', created: '2026-09-18', last: '—', note: '内部自助申请：数据分析 MCP + 数仓只读' },
+  ],
+  invites: [
+    { token: 'inv-staff-demo', kind: 'staff', role: '研究员', org: '能化组', nameHint: '王启', status: 'open', created: '2026-09-17', expireAt: '2026-09-24' },
+    { token: 'inv-cust-demo', kind: 'customer', role: '客户', org: '华东贸易', nameHint: '', status: 'open', created: '2026-09-18', expireAt: '2026-09-25' },
   ],
   rules: [
     { name: '调用成功率低于 99%（持续 5 分钟）', level: '严重', tag: 'red', notify: '飞书 + 企业微信', on: true },
@@ -151,7 +164,8 @@ export const store = reactive({
     },
   ],
   mcpConfig: { visible: false, svcId: null, toolsetId: null, apiKey: null, expire: undefined, once: false },
-  clientFlt: { toolsetId: '' },
+  clientFlt: { toolsetId: '', userId: '', openIssue: false, kw: '' },
+  userFlt: { kw: '' },
   playground: {
     visible: false,
     endpoint: '',
@@ -172,6 +186,90 @@ export const CLIENT_TYPES = [
   { value: 'purple', label: '桌面助手' },
   { value: 'cyan', label: 'IDE 插件' },
 ]
+export const USER_KINDS = [
+  { value: 'staff', label: '内部员工', tag: 'arcoblue', desc: '分公司同事，可用企业邮箱登录，权限按角色' },
+  { value: 'customer', label: '外部客户', tag: 'orangered', desc: '合作方 / 产业客户，须持邀请链接注册，默认 90 天低配额' },
+]
+export const USER_ROLES = [
+  { value: '管理员', tag: 'red' },
+  { value: '开发工程师', tag: 'arcoblue' },
+  { value: '研究员', tag: 'green' },
+  { value: '客户', tag: 'gray' },
+]
+export function kindMeta(kind) {
+  return USER_KINDS.find((k) => k.value === kind) || USER_KINDS[0]
+}
+export function roleTag(role) {
+  return USER_ROLES.find((r) => r.value === role)?.tag || 'gray'
+}
+export function mintInviteToken() {
+  const n = Math.random().toString(36).slice(2, 10)
+  return 'inv-' + n
+}
+export function inviteUrl(token) {
+  const base = typeof location !== 'undefined' ? `${location.origin}${location.pathname}` : ''
+  return `${base}#register?t=${encodeURIComponent(token)}`
+}
+export function findInvite(token) {
+  return store.invites.find((i) => i.token === token)
+}
+function plusDays(n) {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+export function createInvite(opts = {}) {
+  const kind = opts.kind === 'customer' ? 'customer' : 'staff'
+  const role = kind === 'customer' ? '客户' : (opts.role || '研究员')
+  const org = (opts.org || '').trim() || (kind === 'customer' ? '外部客户' : '数智中心')
+  const nameHint = (opts.name || '').trim()
+  const token = mintInviteToken()
+  const created = new Date().toISOString().slice(0, 10)
+  const invite = { token, kind, role, org, nameHint, status: 'open', created, expireAt: plusDays(7) }
+  store.invites.unshift(invite)
+  const user = {
+    id: 'u-' + Date.now().toString(36),
+    name: nameHint || '待注册',
+    email: '',
+    phone: '',
+    kind,
+    role,
+    tag: roleTag(role),
+    team: org,
+    status: '待注册',
+    inviteToken: token,
+    created,
+    last: '—',
+  }
+  store.users.unshift(user)
+  return { invite, user, url: inviteUrl(token) }
+}
+export function registerByInvite(token, payload = {}) {
+  const invite = findInvite(token)
+  if (!invite) return { ok: false, msg: '邀请链接无效' }
+  if (invite.status !== 'open') return { ok: false, msg: '该链接已使用或已作废' }
+  if (invite.expireAt && invite.expireAt < new Date().toISOString().slice(0, 10)) {
+    return { ok: false, msg: '邀请链接已过期，请联系管理员重新发送' }
+  }
+  const name = String(payload.name || '').trim()
+  const phone = String(payload.phone || '').trim()
+  const email = String(payload.email || '').trim()
+  if (!name || !phone || !email) return { ok: false, msg: '请填写姓名、手机号与登录邮箱' }
+  if (!/^1\d{10}$/.test(phone)) return { ok: false, msg: '请填写 11 位手机号' }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, msg: '登录邮箱格式不正确' }
+  if (store.users.some((u) => u.inviteToken !== token && (u.phone === phone || u.email === email))) {
+    return { ok: false, msg: '手机号或登录邮箱已被占用' }
+  }
+  const user = store.users.find((u) => u.inviteToken === token)
+  if (!user) return { ok: false, msg: '邀请不存在' }
+  user.name = name
+  user.phone = phone
+  user.email = email
+  user.status = '正常'
+  user.last = '刚刚'
+  invite.status = 'used'
+  return { ok: true, user }
+}
 
 export function mintApiKey() {
   const bytes = (typeof crypto !== 'undefined' && crypto.getRandomValues)
@@ -197,6 +295,7 @@ export function issueClient(opts = {}) {
     expire: opts.expire === undefined ? null : opts.expire,
     last: '刚刚',
     toolsetIds: [...(opts.toolsetIds || [])],
+    userId: opts.userId || 'u-dev',
   }
   store.clients.unshift(client)
   return { client, full }

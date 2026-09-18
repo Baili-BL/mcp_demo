@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工程开发流程图</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap wide">
+  <p class="kicker">Engineering · Process</p>
+  <h1>工程开发流程图</h1>
+  <p class="lede">
+    开发工程师从接到数据需求，到 MCP 服务可被密钥调用的路径。
+    <strong>先实现、再注册、最后才发 Key</strong>。跨库必须拆工具，禁止在一个 SQL 里打两套库。
+  </p>
+
+  <section>
+    <h2>总览</h2>
+    <p>四段不可颠倒：摸清上游 → 写工具并自测 → 在管理台登记服务与工具 → 挂联调密钥并打开鉴权。</p>
+    <div class="flow">
+      <div class="flow-legend">
+        <span><i class="lg-end"></i>起止</span>
+        <span><i class="lg-box"></i>动作（开发 / 管理台）</span>
+        <span><i class="lg-dia"></i>决策</span>
+      </div>
+
+      <div class="flow-col">
+        <div class="flow-node start"><div class="hd">开始</div><div class="s">产品 / 研究员提出数据能力</div></div>
+        <div class="flow-v"></div>
+
+        <div class="flow-phase p1">一 · 需求与边界</div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">1</span>接到数据需求</div>
+          <div class="s">要哪些品种、系统、字段；是否给外部客户用</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">2</span>评审上游边界</div>
+          <div class="s">哪套库 · 只读账号 · 口径归谁 · 超时与 QPS</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>是否跨库 JOIN？</span></div></div>
+
+        <div class="flow-fork">
+          <div class="flow-arm no">
+            <b>是 · 禁止单工具跨库</b>
+            <div class="box">拆成多个工具<br>一工具一 DSN</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm yes">
+            <b>否</b>
+            <div class="box">单工具只打一个上游<br>METRIC / CRM / DW</div>
+          </div>
+        </div>
+        <div class="flow-join"></div>
+        <div class="flow-v long"></div>
+
+        <div class="flow-phase p2">二 · 实现与自测</div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">3</span>写契约并实现 FastMCP</div>
+          <div class="s">snake_case · @mcp.tool · 薄包装，不重算口径</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">4</span>本地联调</div>
+          <div class="s">tools/list · tools/call；本机才允许关掉鉴权</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>本地 call 通过？</span></div></div>
+        <div class="flow-fork">
+          <div class="flow-arm no">
+            <b>否</b>
+            <div class="box">回到第 3 步改实现<br>错误码带上游名</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm yes">
+            <b>是</b>
+            <div class="box">进入管理台登记<br>不要先发生产 Key</div>
+          </div>
+        </div>
+        <div class="flow-v long"></div>
+
+        <div class="flow-phase p3">三 · 注册上线</div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">5</span>注册 MCP 服务</div>
+          <div class="s">名称 · code · 端点 · HTTP/SSE · 上游平台 · 负责人</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">6</span>探测 / 注册工具</div>
+          <div class="s">优先 tools/list 同步 Schema；失败才手工粘贴</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>与 list 一致？</span></div></div>
+        <div class="flow-fork">
+          <div class="flow-arm no">
+            <b>否</b>
+            <div class="box">服务保持「待发布」<br>禁止编入生产工具集</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm yes">
+            <b>是</b>
+            <div class="box">编入业务域工具集<br>行情 / 基本面 / 分析拆开</div>
+          </div>
+        </div>
+        <div class="flow-v long"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">7</span>编入工具集</div>
+          <div class="s">一把 Key 只绑定需要的集，避免打穿全部库</div>
+        </div>
+        <div class="flow-v"></div>
+
+        <div class="flow-phase p4">四 · 授权与观测</div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">8</span>签发联调 Key</div>
+          <div class="s">挂到已开通的开发账号；低配额、短有效期</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">9</span>预发 / 生产打开鉴权</div>
+          <div class="s">initialize 可放行；list / call 必须 Bearer Key</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">10</span>监控与告警</div>
+          <div class="s">按上游拆延迟；错误率 · 配额 · 逾期指标</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node end"><div class="hd">可被用户调用</div><div class="s">邀请注册 → 签发用户 Key → 客户端接入</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>谁在哪一步</h2>
+    <table>
+      <thead><tr><th>步骤</th><th>主责</th><th>产出</th></tr></thead>
+      <tbody>
+        <tr><td>1–2 需求与上游</td><td>产品 / 开发 + 数据面</td><td>工具清单、DSN、是否跨库的结论</td></tr>
+        <tr><td>3–4 实现与自测</td><td>开发工程师</td><td>FastMCP 进程，本地 list / call 通过</td></tr>
+        <tr><td>5–7 服务与工具注册</td><td>开发提交，管理员确认</td><td>目录与线上 Schema 一致，已进工具集</td></tr>
+        <tr><td>8–10 密钥与观测</td><td>管理员签发，开发盯日志</td><td>联调 Key、鉴权开启、告警规则</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><b>和时序图的关系：</b>本图是开发侧的决策流；顶部「时序图」阶段 ⓪ 是同一段在角色之间的消息流。代码约定见《MCP 服务代码规范》。</div>
+  </section>
+
+  <section>
+    <h2>三个必须拦住的分叉</h2>
+    <ol class="steps">
+      <li><b>跨库</b>：CRM 与数仓不在同一实例时，拆 <code>search_crm_*</code> 与 <code>query_warehouse</code>，由 Agent 连续调用。</li>
+      <li><b>目录不一致</b>：<code>tools/list</code> 对不上就保持待发布，不要靠手工目录骗过客户端。</li>
+      <li><b>生产鉴权</b>：<code>MCP_AUTH_REQUIRED=0</code> 只允许本机。预发和生产必须校验 Key、配额与到期。</li>
+    </ol>
+  </section>
+
+  <footer>开发规范 · 工程开发流程图 · 对照时序图阶段〇与 MCP 服务代码规范</footer>
+</div>
+</body>
+</html>

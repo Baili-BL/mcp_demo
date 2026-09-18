@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import { store, showToolsetConfig, issueClient, toolsetsOfClient, CLIENT_TYPES } from '../store'
 import { fmt, keyExpireMeta, keyStatus, addDays, fmtDateTime, copyText } from '../utils'
@@ -12,7 +12,7 @@ const quotaVisible = ref(false)
 const quotaTarget = ref(null)
 const typeOpts = CLIENT_TYPES
 const form = reactive({
-  name: '', type: 'blue', qps: 10, quota: 20000, expPreset: '90', expire: undefined, toolsetIds: [],
+  name: '', type: 'blue', qps: 10, quota: 20000, expPreset: '90', expire: undefined, toolsetIds: [], userId: '',
 })
 const renewForm = reactive({
   preset: '90',
@@ -39,20 +39,38 @@ const quotaForm = reactive({
 
 const statusTab = ref('all')
 const fltSet = computed(() => store.toolsets.find((s) => s.id === store.clientFlt.toolsetId) || null)
-const rows = computed(() => store.clients.map((c, i) => {
-  const p = c.quota ? (c.calls / c.quota) * 100 : 0
-  const ex = keyExpireMeta(c)
-  const st = keyStatus(c)
-  return { ...c, i, p, ex, st, sets: toolsetsOfClient(c) }
-}).filter((c) => {
-  if (statusTab.value !== 'all' && c.st.text !== statusTab.value) return false
-  if (store.clientFlt.toolsetId && !(c.toolsetIds || []).includes(store.clientFlt.toolsetId)) return false
-  return true
-}))
+const fltUser = computed(() => store.users.find((u) => u.id === store.clientFlt.userId) || null)
+const activeUsers = computed(() => store.users.filter((u) => u.status === '正常'))
+function ownerOf(id) {
+  return store.users.find((u) => u.id === id)
+}
+const rows = computed(() => {
+  const q = store.clientFlt.kw.trim().toLowerCase()
+  return store.clients.map((c, i) => {
+    const p = c.quota ? (c.calls / c.quota) * 100 : 0
+    const ex = keyExpireMeta(c)
+    const st = keyStatus(c)
+    return { ...c, i, p, ex, st, sets: toolsetsOfClient(c) }
+  }).filter((c) => {
+    if (statusTab.value !== 'all' && c.st.text !== statusTab.value) return false
+    if (store.clientFlt.toolsetId && !(c.toolsetIds || []).includes(store.clientFlt.toolsetId)) return false
+    if (store.clientFlt.userId && c.userId !== store.clientFlt.userId) return false
+    if (!q) return true
+    const owner = ownerOf(c.userId)
+    const blob = [
+      c.name, c.key, c.type, c.st.text, c.status,
+      owner?.name, owner?.email, owner?.phone, owner?.team,
+      owner?.kind === 'customer' ? '外部客户' : (owner ? '内部员工' : '未挂账号'),
+      (c.sets || []).map((s) => s.name).join(' '),
+    ].join(' ')
+    return blob.toLowerCase().includes(q)
+  })
+})
 
 function submit() {
   const name = form.name.trim() || '未命名接入端'
-  if (!form.toolsetIds.length) { Message.warning('请选择要授权的 MCP 工具集，否则无法调用'); return }
+  if (!form.userId) { Message.warning('请选择归属用户，先有人再有 Key'); return false }
+  if (!form.toolsetIds.length) { Message.warning('请选择要授权的 MCP 工具集，否则无法调用'); return false }
   let expire = null
   if (form.expPreset === 'never') expire = null
   else if (form.expPreset === 'custom') {
@@ -61,10 +79,10 @@ function submit() {
   } else expire = fmtDateTime(addDays(+form.expPreset))
   const ids = [...form.toolsetIds]
   const { full } = issueClient({
-    name, tag: form.type, qps: +form.qps, quota: +form.quota || 20000, expire, toolsetIds: ids,
+    name, tag: form.type, qps: +form.qps, quota: +form.quota || 20000, expire, toolsetIds: ids, userId: form.userId,
   })
   visible.value = false
-  Object.assign(form, { name: '', type: 'blue', qps: 10, quota: 20000, expPreset: '90', expire: undefined, toolsetIds: [] })
+  Object.assign(form, { name: '', type: 'blue', qps: 10, quota: 20000, expPreset: '90', expire: undefined, toolsetIds: [], userId: '' })
   const first = store.toolsets.find((s) => s.id === ids[0])
   if (first) showToolsetConfig(first, { fullKey: full, expire })
   else Message.success('密钥已签发')
@@ -153,11 +171,22 @@ function gotoSet(ts) {
 }
 function openCreate() {
   form.toolsetIds = store.clientFlt.toolsetId ? [store.clientFlt.toolsetId] : []
+  form.userId = store.clientFlt.userId || form.userId || ''
   visible.value = true
 }
 function clearFlt() {
   store.clientFlt.toolsetId = ''
 }
+function clearUserFlt() {
+  store.clientFlt.userId = ''
+  store.clientFlt.openIssue = false
+}
+watch(() => store.clientFlt.openIssue, (open) => {
+  if (!open) return
+  if (store.clientFlt.userId) form.userId = store.clientFlt.userId
+  visible.value = true
+  store.clientFlt.openIssue = false
+})
 </script>
 
 <template>
@@ -165,7 +194,7 @@ function clearFlt() {
     <div class="page-head">
       <div>
         <h2>接入与密钥</h2>
-        <div class="desc">入站凭证统一在此签发。每把 Key 必须绑定一个或多个 MCP 工具集，才能调用对应端点；配额 / QPS / 到期与工具集配置不再各记一套。</div>
+        <div class="desc">入站凭证统一在此签发。每把 Key 必须挂到已开通用户，并绑定工具集；配额 / QPS / 到期与工具集配置不再各记一套。</div>
       </div>
       <a-button type="primary" @click="openCreate">
         <template #icon><icon-plus /></template>新建密钥
@@ -173,22 +202,40 @@ function clearFlt() {
     </div>
     <a-card :bordered="false" style="margin-bottom: 16px">
       <div class="filter-bar">
-        <a-radio-group v-model="statusTab" type="button" size="small">
-          <a-radio value="all">全部</a-radio>
-          <a-radio value="正常">正常</a-radio>
-          <a-radio value="即将到期">即将到期</a-radio>
-          <a-radio value="限流中">限流中</a-radio>
-          <a-radio value="已过期">已过期</a-radio>
-          <a-radio value="已吊销">已吊销</a-radio>
-        </a-radio-group>
+        <a-space wrap>
+          <a-radio-group v-model="statusTab" type="button" size="small">
+            <a-radio value="all">全部</a-radio>
+            <a-radio value="正常">正常</a-radio>
+            <a-radio value="即将到期">即将到期</a-radio>
+            <a-radio value="限流中">限流中</a-radio>
+            <a-radio value="已过期">已过期</a-radio>
+            <a-radio value="已吊销">已吊销</a-radio>
+          </a-radio-group>
+          <a-input-search
+            v-model="store.clientFlt.kw"
+            allow-clear
+            placeholder="搜索接入端 / Key / 归属用户"
+            :style="{ width: '260px' }"
+          />
+        </a-space>
         <a-space>
           <a-tag v-if="fltSet" color="arcoblue" closable @close="clearFlt">工具集：{{ fltSet.name }}</a-tag>
+          <a-tag v-if="fltUser" color="green" closable @close="clearUserFlt">归属：{{ fltUser.name }}</a-tag>
           <span class="muted">{{ rows.length }} 个接入端</span>
         </a-space>
       </div>
-      <a-table :data="rows" :pagination="false" row-key="id" :scroll="{ x: 1400 }" hoverable stripe>
+      <a-table :data="rows" :pagination="false" row-key="id" :scroll="{ x: 1520 }" hoverable stripe>
         <template #columns>
           <a-table-column title="接入端" data-index="name" :width="140" />
+          <a-table-column title="归属用户" :width="120">
+            <template #cell="{ record }">
+              <span v-if="ownerOf(record.userId)">
+                {{ ownerOf(record.userId).name }}
+                <span class="muted" style="font-size:12px"> · {{ ownerOf(record.userId).kind === 'customer' ? '外部客户' : '内部' }}</span>
+              </span>
+              <span v-else class="muted">未挂账号</span>
+            </template>
+          </a-table-column>
           <a-table-column title="绑定工具集" :width="220">
             <template #cell="{ record }">
               <a-space wrap>
@@ -245,7 +292,7 @@ function clearFlt() {
         <a-card title="鉴权方式" :bordered="false">
           <div class="kv">
             <span class="k">Header</span><span class="mono" style="font-size:12px">Authorization: Bearer mcp-sk-***</span>
-            <span class="k">签发</span><span>管理台签发，支持一键吊销</span>
+            <span class="k">签发</span><span>挂到用户账号，支持一键吊销</span>
             <span class="k">传输</span><span>强制 TLS 1.3</span>
           </div>
         </a-card>
@@ -273,6 +320,13 @@ function clearFlt() {
     <a-modal v-model:visible="visible" title="新建接入密钥" :width="600" @ok="submit" :ok-text="'创建'" unmount-on-close>
       <a-form :model="form" layout="vertical">
         <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="归属用户 *" extra="停用该账号时，名下 Key 全部失效">
+              <a-select v-model="form.userId" allow-search placeholder="选择已开通账号">
+                <a-option v-for="u in activeUsers" :key="u.id" :value="u.id">{{ u.name }} · {{ u.role }}</a-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
           <a-col :span="12"><a-form-item label="接入端名称"><a-input v-model="form.name" placeholder="如：研究助理 Bot" /></a-form-item></a-col>
           <a-col :span="12">
             <a-form-item label="类型">

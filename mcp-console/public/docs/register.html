@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>服务注册与工具注册</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Product Design · 注册中心</p>
+  <h1>服务注册与工具注册</h1>
+  <p class="lede">
+    管理台上的 MCP 服务不是「填个 URL 就算上线」。<strong>开发工程师必须先介入实现</strong>，再登记服务、再登记工具。
+    控制台只做发现、核对与授权，不代替写工具。
+  </p>
+
+  <section>
+    <h2>两件分开的事</h2>
+    <table>
+      <thead><tr><th></th><th>服务注册</th><th>工具注册</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>对象</td>
+          <td>一个可拨号的 MCP 进程（端点 + 协议）</td>
+          <td>该进程 <code>tools/list</code> 暴露的每一个工具</td>
+        </tr>
+        <tr>
+          <td>谁做</td>
+          <td>开发提交，管理员确认上线</td>
+          <td>开发在代码里 <code>@mcp.tool</code>；控制台探测或手工补元数据</td>
+        </tr>
+        <tr>
+          <td>完成标准</td>
+          <td>健康检查通过，端点可 <code>initialize</code></td>
+          <td>Schema 与线上 <code>tools/list</code> 一致，已编入工具集</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout"><b>禁止：</b>先签发生产 Key，再补工具。没有工具集的服务对用户不可见。</div>
+  </section>
+
+  <section>
+    <h2>开发必须提前介入</h2>
+    <p>产品提「要行情 / 要 CRM / 要数仓」时，开发先做数据契约，而不是先做管理台表单。</p>
+    <ol class="steps">
+      <li>确认上游：哪个平台、哪套库、只读还是可写、有无跨库 JOIN。</li>
+      <li>写出工具清单：名称 <code>snake_case</code>、入参、返回字段与错误码。</li>
+      <li>本地 FastMCP 跑通 <code>tools/list</code> / <code>tools/call</code>。</li>
+      <li>到管理台登记服务（名称、code、端点、协议 HTTP/SSE）。</li>
+      <li>登记或同步工具；创建工具集；再申请联调 Key。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>服务注册字段</h2>
+    <table>
+      <thead><tr><th>字段</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>名称 / code</td><td>如 品种行情服务 / <code>futures-market-mcp</code></td></tr>
+        <tr><td>协议</td><td>Streamable HTTP 或 SSE，与客户端 <code>type</code> 一致</td></tr>
+        <tr><td>端点</td><td>完整 URL，如 <code>https://mcp.futures-data.cn/market/mcp</code></td></tr>
+        <tr><td>上游平台</td><td>同花顺 / SMM / 钢联 / CRM / 数仓……可多选，禁止写死三家</td></tr>
+        <tr><td>负责人</td><td>必须是已开通的开发工程师账号</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>工具注册</h2>
+    <p>优先「从端点探测」：管理台用联调 Key 调 <code>tools/list</code>，把 name、description、inputSchema 写入目录。探测失败才允许手工粘贴 Schema。</p>
+    <p>工具编入<strong>工具集</strong>后才能被 Key 绑定。一个工具可以进多个工具集，但生产上按业务域拆分（行情 / 基本面 / 分析），避免一把 Key 打穿全部库。</p>
+  </section>
+
+  <section>
+    <h2>跨平台服务</h2>
+    <p>一个 MCP 服务可以包装多个内部系统（例如数据分析 MCP 同时打 CRM 与数仓）。注册时必须声明：</p>
+    <ul>
+      <li>每个工具对应哪一个上游，禁止在一个 tool 里隐式跨库 JOIN。</li>
+      <li>失败时错误码带上游名，如 <code>MCP_ERR_UPSTREAM_TIMEOUT:crm</code>。</li>
+      <li>限流按上游分别计算，避免 CRM 10 QPS 拖死数仓查询。</li>
+    </ul>
+  </section>
+
+  <footer>产品设计 · 服务注册与工具注册 · 时序图阶段〇对应本节</footer>
+</div>
+</body>
+</html>

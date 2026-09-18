@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>时序图：开发介入</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Sequence · 全流程</p>
+  <h1>时序图文档</h1>
+  <p class="lede">
+    交互时序图在顶部「时序图」。本文补上原先缺失的两段：<strong>开发工程师提前介入</strong>，以及<strong>服务注册 / 工具注册</strong>。
+    用户开通发生在发 Key 之前。
+  </p>
+
+  <section>
+    <h2>角色</h2>
+    <table>
+      <thead><tr><th>角色</th><th>职责</th></tr></thead>
+      <tbody>
+        <tr><td>用户 · 研究员</td><td>申请账号、提问、消费结论</td></tr>
+        <tr><td>MCP 客户端</td><td>Cursor / Claude Desktop，持 Key 调工具</td></tr>
+        <tr><td>开发工程师</td><td>摸清上游、实现 MCP、登记服务与工具</td></tr>
+        <tr><td>管理台</td><td>用户、服务、工具集、密钥、监控</td></tr>
+        <tr><td>MCP 服务端</td><td>FastMCP 进程</td></tr>
+        <tr><td>数据面</td><td>可能跨 MySQL / 数仓 / CRM，不是单一 metric 库</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>阶段〇 · 开发介入（原先缺失）</h2>
+    <ol class="steps">
+      <li>用户/产品向开发提出数据能力（「要螺纹钢现货 + CRM 客户」）。</li>
+      <li>开发向数据面确认：表、口径、是否跨库、只读账号。</li>
+      <li>开发实现 FastMCP 工具（薄包装，不在 MCP 层重算口径）。</li>
+      <li>开发在管理台<strong>注册服务</strong>（端点、协议、上游平台、负责人）。</li>
+      <li>开发<strong>注册工具</strong>：探测 <code>tools/list</code> 或提交 Schema，编入工具集。</li>
+      <li>管理台对端点做一次 <code>tools/list</code> 核对，不一致则服务保持「待发布」。</li>
+    </ol>
+    <div class="callout">没有阶段〇就签发 Key，客户端会拿到空工具列表或打到未授权库。这是时序图必须把开发放在管理员前面的原因。</div>
+  </section>
+
+  <section>
+    <h2>阶段一 · 用户开通与密钥</h2>
+    <ol class="steps">
+      <li>管理员生成邀请链接，标明内部员工或外部客户（见《用户管理与注册》）。</li>
+      <li>对方打开链接，填写手机号与登录邮箱完成注册。</li>
+      <li>账号变为正常后，再签发 Key 并绑定工具集。完整 Key 只展示一次。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>阶段二～四</h2>
+    <p>与控制台时序图一致：粘贴配置 → <code>initialize</code>（握手可不带 Key）→ <code>tools/list</code> / <code>tools/call</code> 强制鉴权 → 按工具路由到对应库 → 日志回写监控。</p>
+    <p>跨平台调用时，一次用户问题可能连续打两个 MCP 服务（行情 + 分析），密钥必须分别绑定对应工具集，不能靠「内网所以都能打」。</p>
+  </section>
+
+  <section>
+    <h2>和交互图怎么用</h2>
+    <p>打开顶部 <b>时序图</b>，筛「⓪ 开发介入」可只看注册链路；蓝色步骤仍跳到 MCP 中心 / 用户管理 / 接入与密钥。开发侧决策分叉见《工程开发流程图》。</p>
+  </section>
+
+  <footer>接入流程 · 时序图文档 · 与控制台时序图阶段划分一致</footer>
+</div>
+</body>
+</html>

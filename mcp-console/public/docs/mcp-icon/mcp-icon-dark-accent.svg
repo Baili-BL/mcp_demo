@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- MCP Service Icon — Dark / Accent -->
+  <rect x="8" y="8" width="1008" height="1008" rx="230" fill="#17191E"/>
+  <rect x="8" y="8" width="1008" height="1008" rx="230" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
+
+  <path d="M 318 744 L 318 336 L 512 570 L 706 336 L 706 744"
+        fill="none" stroke="#ECEAE5" stroke-width="74"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g>
+    <circle cx="318" cy="744" r="46" fill="none" stroke="#17191E" stroke-width="26"/>
+    <circle cx="318" cy="744" r="33" fill="#FF6B2C"/>
+
+    <circle cx="318" cy="336" r="46" fill="none" stroke="#17191E" stroke-width="26"/>
+    <circle cx="318" cy="336" r="33" fill="#FF6B2C"/>
+
+    <circle cx="706" cy="336" r="46" fill="none" stroke="#17191E" stroke-width="26"/>
+    <circle cx="706" cy="336" r="33" fill="#FF6B2C"/>
+
+    <circle cx="706" cy="744" r="46" fill="none" stroke="#17191E" stroke-width="26"/>
+    <circle cx="706" cy="744" r="33" fill="#FF6B2C"/>
+  </g>
+</svg>
