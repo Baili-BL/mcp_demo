@@ -25,7 +25,8 @@ const stColor = (st) => (st === '未处理' ? 'red' : st === '已确认' ? 'arco
     </div>
     <a-row :gutter="16" style="margin-bottom: 8px">
       <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card" :bordered="false" hoverable @click="emit('goto', 'services')">
+        <a-card class="stat-card tone-blue" :bordered="false" hoverable @click="emit('goto', 'services')">
+          <div class="stat-ico"><icon-storage /></div>
           <a-statistic title="在线服务" :value="onSvc" :value-style="{ fontWeight: 600 }">
             <template #suffix><span style="font-size:15px;color:var(--color-text-3)"> / {{ store.services.length }}</span></template>
           </a-statistic>
@@ -33,25 +34,29 @@ const stColor = (st) => (st === '未处理' ? 'red' : st === '已确认' ? 'arco
         </a-card>
       </a-col>
       <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card" :bordered="false" hoverable @click="emit('goto', 'tools')">
+        <a-card class="stat-card tone-cyan" :bordered="false" hoverable @click="emit('goto', 'tools')">
+          <div class="stat-ico"><icon-list /></div>
           <a-statistic title="注册工具" :value="store.tools.length" />
           <div class="stat-foot"><a-badge status="success" /> 启用 {{ onTools }} · 停用 {{ store.tools.length - onTools }}</div>
         </a-card>
       </a-col>
       <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card" :bordered="false" hoverable @click="emit('goto', 'monitor')">
+        <a-card class="stat-card tone-purple" :bordered="false" hoverable @click="emit('goto', 'monitor')">
+          <div class="stat-ico"><icon-bar-chart /></div>
           <a-statistic title="今日调用量" :value="totalCalls()" :value-style="{ fontWeight: 600 }" />
           <div class="stat-foot">较昨日 <span class="up">▲ 8.6%</span></div>
         </a-card>
       </a-col>
       <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card" :bordered="false" hoverable @click="emit('goto', 'monitor')">
+        <a-card class="stat-card tone-green" :bordered="false" hoverable @click="emit('goto', 'monitor')">
+          <div class="stat-ico"><icon-safe /></div>
           <a-statistic title="调用成功率" :precision="1" :value="weightedSR()" suffix="%" />
           <div class="stat-foot">SLA 目标 ≥ 99.0%</div>
         </a-card>
       </a-col>
       <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card" :bordered="false" hoverable @click="emit('goto', 'monitor')">
+        <a-card class="stat-card tone-orange" :bordered="false" hoverable @click="emit('goto', 'monitor')">
+          <div class="stat-ico"><icon-dashboard /></div>
           <a-statistic title="P95 延迟" :value="486" suffix="ms" />
           <div class="stat-foot">较昨日 <span class="up">▼ 32ms</span></div>
         </a-card>

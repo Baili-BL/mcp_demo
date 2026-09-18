@@ -440,8 +440,80 @@ body {
   margin-bottom: 14px;
 }
 
-.stat-card { cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }
-.stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(22, 93, 255, 0.08); }
+.stat-card {
+  --stat: 22, 93, 255;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.content-wrap .arco-card.stat-card {
+  background:
+    linear-gradient(165deg, rgba(var(--stat), 0.18) 0%, rgba(255, 255, 255, 0.92) 46%, #fff 100%);
+  border: 1px solid rgba(var(--stat), 0.2);
+  box-shadow: 0 1px 2px rgba(12, 13, 14, 0.04), 0 10px 24px rgba(var(--stat), 0.1);
+  border-radius: 14px;
+}
+.content-wrap .arco-card.stat-card:hover {
+  background:
+    linear-gradient(165deg, rgba(var(--stat), 0.22) 0%, rgba(255, 255, 255, 0.94) 46%, #fff 100%);
+  box-shadow: 0 12px 28px rgba(var(--stat), 0.2);
+}
+.content-wrap .arco-card.stat-card::before,
+.content-wrap .arco-card.stat-card::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+.content-wrap .arco-card.stat-card::before {
+  width: 168px;
+  height: 168px;
+  right: -48px;
+  top: -62px;
+  background: radial-gradient(circle, rgba(var(--stat), 0.32) 0%, rgba(var(--stat), 0) 72%);
+}
+.content-wrap .arco-card.stat-card::after {
+  width: 110px;
+  height: 110px;
+  right: 44px;
+  bottom: -48px;
+  background: radial-gradient(circle, rgba(var(--stat), 0.16) 0%, rgba(var(--stat), 0) 70%);
+}
+.content-wrap .arco-card.stat-card .arco-card-body,
+.content-wrap .arco-card.stat-card .arco-card-header {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+.stat-card.tone-blue { --stat: 22, 93, 255; }
+.stat-card.tone-cyan { --stat: 14, 201, 201; }
+.stat-card.tone-green { --stat: 0, 180, 42; }
+.stat-card.tone-orange { --stat: 247, 114, 52; }
+.stat-card.tone-purple { --stat: 114, 46, 209; }
+.stat-card.tone-red { --stat: 245, 63, 63; }
+.stat-card.tone-rose { --stat: 235, 47, 150; }
+.stat-card:hover {
+  transform: translateY(-2px);
+}
+.stat-ico {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--stat), 0.12);
+  color: rgb(var(--stat));
+  font-size: 18px;
+  z-index: 2;
+}
+.stat-card .arco-statistic { padding-right: 44px; }
 .stat-foot { margin-top: 8px; font-size: 12px; color: var(--color-text-3); }
 .up { color: #00b42a; }
 .down { color: #f53f3f; }

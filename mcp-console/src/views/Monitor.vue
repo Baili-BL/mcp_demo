@@ -52,27 +52,31 @@ async function copyTrace(id) {
     </div>
     <a-row :gutter="16" style="margin-bottom: 16px">
       <a-col :xs="12" :md="6" style="margin-bottom: 16px">
-        <a-card :bordered="false">
+        <a-card class="stat-card tone-green" :bordered="false">
+          <div class="stat-ico"><icon-dashboard /></div>
           <a-statistic title="P50 延迟" :value="182" suffix="ms" :value-style="{ color: '#00b42a' }" />
           <a-progress :percent="0.18" status="success" :show-text="false" style="margin-top:8px" />
         </a-card>
       </a-col>
       <a-col :xs="12" :md="6" style="margin-bottom: 16px">
-        <a-card :bordered="false">
+        <a-card class="stat-card tone-orange" :bordered="false">
+          <div class="stat-ico"><icon-bar-chart /></div>
           <a-statistic title="P95 延迟" :value="486" suffix="ms" :value-style="{ color: '#f77234' }" />
           <a-progress :percent="0.49" status="warning" :show-text="false" style="margin-top:8px" />
         </a-card>
       </a-col>
       <a-col :xs="12" :md="6" style="margin-bottom: 16px">
-        <a-card :bordered="false">
+        <a-card class="stat-card tone-red" :bordered="false">
+          <div class="stat-ico"><icon-notification /></div>
           <a-statistic title="P99 延迟" :value="912" suffix="ms" :value-style="{ color: '#f53f3f' }" />
           <a-progress :percent="0.91" status="danger" :show-text="false" style="margin-top:8px" />
         </a-card>
       </a-col>
       <a-col :xs="12" :md="6" style="margin-bottom: 16px">
-        <a-card :bordered="false">
+        <a-card class="stat-card tone-rose" :bordered="false">
+          <div class="stat-ico"><icon-exclamation-circle /></div>
           <a-statistic title="今日错误" :value="totalErr" suffix="次" :value-style="{ color: '#f53f3f' }" />
-          <div style="margin-top:8px;font-size:12px;color:var(--color-text-3)">错误率 {{ (totalErr / totalCalls() * 100).toFixed(2) }}%</div>
+          <div class="stat-foot">错误率 {{ (totalErr / totalCalls() * 100).toFixed(2) }}%</div>
         </a-card>
       </a-col>
     </a-row>

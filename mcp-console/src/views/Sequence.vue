@@ -178,7 +178,7 @@ const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '
 
     <a-row :gutter="16" style="margin-top: 16px">
       <a-col :xs="24" :md="8" style="margin-bottom: 16px">
-        <a-card title="鉴权与安全" :bordered="false" hoverable class="stat-card" @click="emit('goto', 'clients')">
+        <a-card title="鉴权与安全" :bordered="false" hoverable class="stat-card tone-blue" @click="emit('goto', 'clients')">
           <ul class="seq-ul">
             <li>Bearer Key 校验 <span class="mono">base_from_mcp_api_key</span>（enabled + expire_time），结果缓存 60s</li>
             <li>握手（initialize）放行；tools/list 与 tools/call 强制鉴权。失败分流：缺 Key / 已停用 / 已过期</li>
@@ -188,7 +188,7 @@ const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '
         </a-card>
       </a-col>
       <a-col :xs="24" :md="8" style="margin-bottom: 16px">
-        <a-card title="数据源路由" :bordered="false" hoverable class="stat-card" @click="emit('goto', 'tools')">
+        <a-card title="数据源路由" :bordered="false" hoverable class="stat-card tone-cyan" @click="emit('goto', 'tools')">
           <ul class="seq-ul">
             <li><span class="mono">1</span> 同花顺 / SMM / 钢联 → 指标库 <span class="mono">METRIC_DSN</span></li>
             <li>CRM 工具只打 <span class="mono">CRM_DSN</span>；数仓工具只打 <span class="mono">DW_DSN</span></li>
@@ -198,7 +198,7 @@ const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '
         </a-card>
       </a-col>
       <a-col :xs="24" :md="8" style="margin-bottom: 16px">
-        <a-card title="可观测与运维" :bordered="false" hoverable class="stat-card" @click="emit('goto', 'monitor')">
+        <a-card title="可观测与运维" :bordered="false" hoverable class="stat-card tone-purple" @click="emit('goto', 'monitor')">
           <ul class="seq-ul">
             <li>调用日志：key_name / tool_name / args / 耗时 / 行数</li>
             <li>管理台「调用监控」：24h 趋势、P50/P95/P99、错误码分布</li>
