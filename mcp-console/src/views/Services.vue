@@ -262,7 +262,7 @@ function modeName(id) {
       <div class="hub-intro">
         <div class="desc">MCP 服务登记 Remote 端点；工具集只负责把各服务里的工具归集后下发给 Agent。密钥在「接入与密钥」签发并绑定工具集。备注：新服务请联系 MCP 服务人员。</div>
         <a-button type="text" class="tutorial-link" @click="emit('goto', 'sequence')">
-          查看教程 <icon-down />
+          查看教程 <icon-caret-down />
         </a-button>
       </div>
     </div>
@@ -273,9 +273,14 @@ function modeName(id) {
     </div>
 
     <div class="hub-toolbar">
-      <a-button v-if="store.hubTab === 'services'" type="primary" @click="openCreateSvc">创建 MCP 服务</a-button>
-      <a-button v-else type="primary" @click="openCreateSet">创建 MCP 工具集</a-button>
-      <a-input-search v-model="hubKw" allow-clear placeholder="搜索名称、ID、所属系统" :style="{ width: '240px' }" />
+      <div class="hub-toolbar-left">
+        <a-button v-if="store.hubTab === 'services'" type="primary" @click="openCreateSvc">创建 MCP 服务</a-button>
+        <a-button v-else type="primary" @click="openCreateSet">创建 MCP 工具集</a-button>
+        <a-input-search v-model="hubKw" allow-clear placeholder="搜索名称、ID" :style="{ width: '236px' }" />
+      </div>
+      <a-button class="hub-refresh" @click="hubKw = ''">
+        <icon-refresh />
+      </a-button>
     </div>
 
     <div class="hub-table">

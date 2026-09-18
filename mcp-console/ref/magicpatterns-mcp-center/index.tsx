@@ -1,31 +1,40 @@
+/**
+ * Magic Patterns 抓取时把图标编成 Icon1…Icon26，已按用途改成语义名：
+ * 侧栏 IconNav*：Overview / AppSquare / Workshop / Runtime / Sandbox / Skills /
+ *   A2A / Session / Memory / Knowledge / Gateway / Identity / Evaluation / Observability
+ * 子菜单箭头：IconChevronGateway（展开）、IconChevronEvaluation、IconChevronObservability
+ * 页内：IconSiderCollapse、IconTutorialCaret、IconSearch、IconRefresh
+ * 表头筛选：IconFilterStatus / Network / CallMode / GatewayMode
+ * 空状态：IconEmptyState
+ */
 import React from "react";
 import { render } from "react-dom";
-import { Icon1 } from "./Icon1";
-import { Icon2 } from "./Icon2";
-import { Icon3 } from "./Icon3";
-import { Icon4 } from "./Icon4";
-import { Icon5 } from "./Icon5";
-import { Icon6 } from "./Icon6";
-import { Icon7 } from "./Icon7";
-import { Icon8 } from "./Icon8";
-import { Icon9 } from "./Icon9";
-import { Icon10 } from "./Icon10";
-import { Icon11 } from "./Icon11";
-import { Icon12 } from "./Icon12";
-import { Icon13 } from "./Icon13";
-import { Icon14 } from "./Icon14";
-import { Icon15 } from "./Icon15";
-import { Icon16 } from "./Icon16";
-import { Icon17 } from "./Icon17";
-import { Icon18 } from "./Icon18";
-import { Icon19 } from "./Icon19";
-import { Icon20 } from "./Icon20";
-import { Icon21 } from "./Icon21";
-import { Icon22 } from "./Icon22";
-import { Icon23 } from "./Icon23";
-import { Icon24 } from "./Icon24";
-import { Icon25 } from "./Icon25";
-import { Icon26 } from "./Icon26";
+import { IconNavOverview } from "./IconNavOverview";
+import { IconNavAppSquare } from "./IconNavAppSquare";
+import { IconNavWorkshop } from "./IconNavWorkshop";
+import { IconNavRuntime } from "./IconNavRuntime";
+import { IconNavSandbox } from "./IconNavSandbox";
+import { IconNavSkills } from "./IconNavSkills";
+import { IconNavA2A } from "./IconNavA2A";
+import { IconNavSession } from "./IconNavSession";
+import { IconNavMemory } from "./IconNavMemory";
+import { IconNavKnowledge } from "./IconNavKnowledge";
+import { IconNavGateway } from "./IconNavGateway";
+import { IconChevronGateway } from "./IconChevronGateway";
+import { IconNavIdentity } from "./IconNavIdentity";
+import { IconNavEvaluation } from "./IconNavEvaluation";
+import { IconChevronEvaluation } from "./IconChevronEvaluation";
+import { IconNavObservability } from "./IconNavObservability";
+import { IconChevronObservability } from "./IconChevronObservability";
+import { IconSiderCollapse } from "./IconSiderCollapse";
+import { IconTutorialCaret } from "./IconTutorialCaret";
+import { IconSearch } from "./IconSearch";
+import { IconRefresh } from "./IconRefresh";
+import { IconFilterStatus } from "./IconFilterStatus";
+import { IconFilterNetwork } from "./IconFilterNetwork";
+import { IconFilterCallMode } from "./IconFilterCallMode";
+import { IconFilterGatewayMode } from "./IconFilterGatewayMode";
+import { IconEmptyState } from "./IconEmptyState";
 
 export function Component() {
   return (
@@ -421,7 +430,7 @@ feblend {
                                 scrollbarWidth: "thin",
                               }}
                             >
-                              <Icon1
+                              <IconNavOverview
                                 style={{
                                   outlineColor: "rgb(66, 70, 78)",
                                   color: "rgb(66, 70, 78)",
@@ -517,7 +526,7 @@ feblend {
                                 scrollbarWidth: "thin",
                               }}
                             >
-                              <Icon2
+                              <IconNavAppSquare
                                 style={{
                                   outlineColor: "rgb(66, 70, 78)",
                                   color: "rgb(66, 70, 78)",
@@ -613,7 +622,7 @@ feblend {
                                 scrollbarWidth: "thin",
                               }}
                             >
-                              <Icon3
+                              <IconNavWorkshop
                                 style={{
                                   outlineColor: "rgb(66, 70, 78)",
                                   color: "rgb(66, 70, 78)",
@@ -775,7 +784,7 @@ feblend {
                                     scrollbarWidth: "thin",
                                   }}
                                 >
-                                  <Icon4
+                                  <IconNavRuntime
                                     style={{
                                       outlineColor: "rgb(66, 70, 78)",
                                       color: "rgb(66, 70, 78)",
@@ -900,7 +909,7 @@ feblend {
                                     scrollbarWidth: "thin",
                                   }}
                                 >
-                                  <Icon5
+                                  <IconNavSandbox
                                     style={{
                                       outlineColor: "rgb(66, 70, 78)",
                                       color: "rgb(66, 70, 78)",
@@ -1025,7 +1034,7 @@ feblend {
                                     scrollbarWidth: "thin",
                                   }}
                                 >
-                                  <Icon6
+                                  <IconNavSkills
                                     style={{
                                       outlineColor: "rgb(66, 70, 78)",
                                       color: "rgb(66, 70, 78)",
@@ -1150,7 +1159,7 @@ feblend {
                                     scrollbarWidth: "thin",
                                   }}
                                 >
-                                  <Icon7
+                                  <IconNavA2A
                                     style={{
                                       outlineColor: "rgb(66, 70, 78)",
                                       color: "rgb(66, 70, 78)",
@@ -1275,7 +1284,7 @@ feblend {
                                     scrollbarWidth: "thin",
                                   }}
                                 >
-                                  <Icon8
+                                  <IconNavSession
                                     style={{
                                       outlineColor: "rgb(66, 70, 78)",
                                       color: "rgb(66, 70, 78)",
@@ -1400,7 +1409,7 @@ feblend {
                                     scrollbarWidth: "thin",
                                   }}
                                 >
-                                  <Icon9
+                                  <IconNavMemory
                                     style={{
                                       outlineColor: "rgb(66, 70, 78)",
                                       color: "rgb(66, 70, 78)",
@@ -1525,7 +1534,7 @@ feblend {
                                     scrollbarWidth: "thin",
                                   }}
                                 >
-                                  <Icon10
+                                  <IconNavKnowledge
                                     style={{
                                       outlineColor: "rgb(66, 70, 78)",
                                       color: "rgb(66, 70, 78)",
@@ -1642,7 +1651,7 @@ feblend {
                                       display: "flex",
                                     }}
                                   >
-                                    <Icon11
+                                    <IconNavGateway
                                       style={{
                                         outlineColor: "rgb(66, 70, 78)",
                                         transitionBehavior: "normal",
@@ -1692,7 +1701,7 @@ feblend {
                                 scrollbarWidth: "thin",
                               }}
                             >
-                              <Icon12
+                              <IconChevronGateway
                                 style={{
                                   outlineColor: "rgb(22, 100, 255)",
                                   transitionBehavior: "normal",
@@ -2176,7 +2185,7 @@ feblend {
                                     scrollbarWidth: "thin",
                                   }}
                                 >
-                                  <Icon13
+                                  <IconNavIdentity
                                     style={{
                                       outlineColor: "rgb(66, 70, 78)",
                                       color: "rgb(66, 70, 78)",
@@ -2323,7 +2332,7 @@ feblend {
                                       display: "flex",
                                     }}
                                   >
-                                    <Icon14
+                                    <IconNavEvaluation
                                       style={{
                                         outlineColor: "rgb(66, 70, 78)",
                                         color: "rgb(66, 70, 78)",
@@ -2368,7 +2377,7 @@ feblend {
                                 scrollbarWidth: "thin",
                               }}
                             >
-                              <Icon15
+                              <IconChevronEvaluation
                                 style={{ outlineColor: "rgb(66, 70, 78)" }}
                               />
                             </span>
@@ -2822,7 +2831,7 @@ feblend {
                                       display: "flex",
                                     }}
                                   >
-                                    <Icon16
+                                    <IconNavObservability
                                       style={{
                                         outlineColor: "rgb(66, 70, 78)",
                                         color: "rgb(66, 70, 78)",
@@ -2867,7 +2876,7 @@ feblend {
                                 scrollbarWidth: "thin",
                               }}
                             >
-                              <Icon17
+                              <IconChevronObservability
                                 style={{ outlineColor: "rgb(66, 70, 78)" }}
                               />
                             </span>
@@ -3157,7 +3166,7 @@ feblend {
                     borderRadius: "0px 4px 4px 0px",
                   }}
                 >
-                  <Icon18 style={{ outlineColor: "rgb(0, 0, 0)" }} />
+                  <IconSiderCollapse style={{ outlineColor: "rgb(0, 0, 0)" }} />
                 </div>
               </div>
               <div
@@ -3341,7 +3350,7 @@ feblend {
                               </span>
                             </div>
                             <div style={{ outlineColor: "rgb(86, 82, 255)" }}>
-                              <Icon19
+                              <IconTutorialCaret
                                 style={{
                                   outlineColor: "rgb(86, 82, 255)",
                                   color: "rgb(86, 82, 255)",
@@ -3746,7 +3755,7 @@ feblend {
                                                 padding: "0px 12px 0px 12px",
                                               }}
                                             >
-                                              <Icon20
+                                              <IconSearch
                                                 style={{
                                                   outlineColor:
                                                     "rgb(115, 122, 135)",
@@ -3872,7 +3881,7 @@ feblend {
                                               padding: "0px",
                                             }}
                                           >
-                                            <Icon21
+                                            <IconRefresh
                                               style={{
                                                 outlineColor:
                                                   "rgb(78, 89, 105)",
@@ -4208,7 +4217,7 @@ feblend {
                                                       borderRadius: "2px",
                                                     }}
                                                   >
-                                                    <Icon22
+                                                    <IconFilterStatus
                                                       style={{
                                                         outlineColor:
                                                           "rgb(66, 70, 78)",
@@ -4295,7 +4304,7 @@ feblend {
                                                       borderRadius: "2px",
                                                     }}
                                                   >
-                                                    <Icon23
+                                                    <IconFilterNetwork
                                                       style={{
                                                         outlineColor:
                                                           "rgb(66, 70, 78)",
@@ -4411,7 +4420,7 @@ feblend {
                                                       borderRadius: "2px",
                                                     }}
                                                   >
-                                                    <Icon24
+                                                    <IconFilterCallMode
                                                       style={{
                                                         outlineColor:
                                                           "rgb(66, 70, 78)",
@@ -4498,7 +4507,7 @@ feblend {
                                                       borderRadius: "2px",
                                                     }}
                                                   >
-                                                    <Icon25
+                                                    <IconFilterGatewayMode
                                                       style={{
                                                         outlineColor:
                                                           "rgb(66, 70, 78)",
@@ -4734,7 +4743,7 @@ feblend {
                                                             "center",
                                                         }}
                                                       >
-                                                        <Icon26
+                                                        <IconEmptyState
                                                           style={{
                                                             outlineColor:
                                                               "rgb(169, 174, 184)",

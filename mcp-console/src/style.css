@@ -401,6 +401,16 @@ body {
   gap: 12px;
   margin-bottom: 16px;
 }
+.hub-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hub-refresh {
+  width: 32px;
+  padding: 0;
+  color: rgb(66, 70, 78);
+}
 .hub-toolbar .arco-btn-primary {
   background: rgb(86, 82, 255);
   border-color: rgb(70, 66, 230);
