@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- MCP Service Glyph — transparent background, for favicon / avatar crop / small sizes -->
+  <path d="M 318 744 L 318 336 L 512 570 L 706 336 L 706 744"
+        fill="none" stroke="currentColor" stroke-width="80"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
