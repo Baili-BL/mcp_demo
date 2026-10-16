@@ -1,4 +1,24 @@
 import { reactive } from 'vue'
+import {
+  hydrateSources, hydrateDatasets, hydrateDatasetFolders, isDbKind, attachSampleCatalog,
+  publishDatasetTool, publishVibeDatasetTool, DATASET_SVC_ID, datasetKind, datasetKindLabel,
+  testSourceConnection, syncSchema, previewDataset, previewSql,
+  updateColumn, saveDatasetGrant, compileRowFilter, compileGrantRowFilter, hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, describeColSubject, isMeasureColumn, findGrant, getOrCreateGrant, findDataset, columnsForUser, ruleAppliesToUser,
+  toolsOfDataset, syncBoundTools, queryDatasetWithGrant, listAuthorizedDatasets,
+  draftFromCatalog, saveObjectGrant, createModeledDataset, createSqlDataset, updateModeledDataset, updateSqlDataset, compileModelSql,
+  ROOT_FOLDER_ID, folderPath, folderCrumbs, folderChildren, flattenFolders, findFolder,
+} from './sourceMeta'
+
+export {
+  isDbKind, attachSampleCatalog, hydrateDatasetFolders,
+  ROOT_FOLDER_ID, folderPath, folderCrumbs, folderChildren, flattenFolders, findFolder,
+  createModeledDataset, createSqlDataset, updateModeledDataset, updateSqlDataset, compileModelSql,
+  publishDatasetTool, publishVibeDatasetTool, DATASET_SVC_ID, datasetKind, datasetKindLabel,
+  testSourceConnection, syncSchema, previewDataset, previewSql,
+  updateColumn, saveDatasetGrant, compileRowFilter, compileGrantRowFilter, hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, describeColSubject, isMeasureColumn, findGrant, getOrCreateGrant, findDataset, columnsForUser, ruleAppliesToUser,
+  toolsOfDataset, syncBoundTools, queryDatasetWithGrant, listAuthorizedDatasets,
+  draftFromCatalog, saveObjectGrant,
+}
 
 export const SECTOR_TAG = { 黑色: 'gray', 有色: 'orange', 能化: 'purple', 农产品: 'green', 贵金属: 'gold' }
 export const SVC_COLORS = ['#165dff', '#722ed1', '#eb2f96', '#f77234', '#14c9c9', '#00b42a']
@@ -55,16 +75,18 @@ const trend0 = genTrend()
 
 export const store = reactive({
   services: [
-    { id: 'mkt', name: '品种行情服务', code: 'futures-market-mcp', version: 'v1.3.2', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/market/mcp', sources: ['同花顺'], health: 'healthy', inst: '3/3', calls1h: 1832, err1h: 2, sla: '99.98%' },
-    { id: 'fund', name: '产业基本面服务', code: 'futures-fundamental-mcp', version: 'v1.1.0', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/fundamental/mcp', sources: ['SMM', '上海钢联'], health: 'healthy', inst: '2/2', calls1h: 964, err1h: 5, sla: '99.92%' },
+    { id: 'mkt', name: '品种行情服务', code: 'futures-market-mcp', version: 'v1.3.2', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/market/mcp', sources: ['同花顺', 'EDB 指标库'], health: 'healthy', inst: '3/3', calls1h: 1832, err1h: 2, sla: '99.98%' },
+    { id: 'fund', name: '产业基本面服务', code: 'futures-fundamental-mcp', version: 'v1.1.0', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/fundamental/mcp', sources: ['SMM', '上海钢联', '手工录入', '海关开放接口'], health: 'healthy', inst: '2/2', calls1h: 964, err1h: 5, sla: '99.92%' },
     { id: 'res', name: '研报知识服务', code: 'research-knowledge-mcp', version: 'v0.9.4', proto: 'SSE', endpoint: 'https://mcp.futures-data.cn/research/sse', sources: [], health: 'degraded', inst: '2/3', calls1h: 417, err1h: 21, sla: '99.61%' },
     { id: 'anl', name: '数据分析服务', code: 'data-analytics-mcp', version: 'v0.8.1', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/analytics/mcp', sources: ['CRM 系统', '数仓'], health: 'healthy', inst: '2/2', calls1h: 538, err1h: 3, sla: '99.88%' },
+    { id: 'dsx', name: '数据集服务', code: 'dataset-hub-mcp', version: 'v1.0.0', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/datasets/mcp', sources: [], builtin: true, health: 'healthy', inst: '2/2', calls1h: 0, err1h: 0, sla: '99.99%' },
   ],
   svcMeta: {
     mkt: { n: '品种行情服务', c: '#165dff' },
     fund: { n: '产业基本面服务', c: '#14c9c9' },
     res: { n: '研报知识服务', c: '#f7ba1e' },
     anl: { n: '数据分析服务', c: '#722ed1' },
+    dsx: { n: '数据集服务', c: '#00b42a' },
   },
   tools: [
     { name: 'get_spot_price', cn: '现货价格查询', svc: 'mkt', sector: '有色', version: 'v1.3.0', calls: 4213, sr: 99.7, lat: 156, on: true, desc: '按品种/地区查询现货日度价格，支持升贴水与均价口径。', schema: { type: 'object', properties: { variety: { type: 'string', description: '品种代码，如 CU / RB / SA' }, region: { type: 'string', description: '地区，默认华东' }, start_date: { type: 'string', format: 'date' }, end_date: { type: 'string', format: 'date' } }, required: ['variety'] }, week: [3820, 4102, 3988, 4230, 4405, 4021, 4213], errs: [{ t: '09:12', code: 'MCP_ERR_UPSTREAM_TIMEOUT', msg: '同花顺行情网关响应超时（>3s），已重试成功' }] },
@@ -79,8 +101,8 @@ export const store = reactive({
     { name: 'search_reports', cn: '研报全文检索', svc: 'res', sector: '有色', version: 'v0.9.4', calls: 1543, sr: 98.2, lat: 1180, on: true, desc: '对研报库（PDF/MD）做全文+语义检索，返回段落级引用。', schema: { type: 'object', properties: { query: { type: 'string', description: '检索词或自然语言问题' }, variety: { type: 'string' }, top_k: { type: 'integer', default: 10 }, date_range: { type: 'string', description: '如 2026-01-01/2026-09-16' } }, required: ['query'] }, week: [1210, 1388, 1452, 1501, 1602, 1488, 1543], errs: [{ t: '13:58', code: 'MCP_ERR_UPSTREAM_TIMEOUT', msg: '向量检索集群负载高，P95 超阈值' }, { t: '16:02', code: 'MCP_ERR_RATE_LIMITED', msg: '单客户端触发 20 QPS 限流' }] },
     { name: 'get_research_framework', cn: '品种投研框架', svc: 'res', sector: '农产品', version: 'v0.8.2', calls: 692, sr: 99.3, lat: 640, on: true, desc: '返回品种投研框架与核心指标树（蒸馏自研究员方法论）。', schema: { type: 'object', properties: { variety: { type: 'string' }, depth: { type: 'integer', description: '指标树深度', default: 3 } }, required: ['variety'] }, week: [566, 601, 640, 675, 710, 655, 692], errs: [{ t: '12:20', code: 'MCP_ERR_NOT_FOUND', msg: '品种 SI 框架尚未蒸馏入库' }] },
     { name: 'extract_indicator_view', cn: '研报指标观点抽取', svc: 'res', sector: '贵金属', version: 'v0.7.5', calls: 428, sr: 97.1, lat: 1520, on: true, desc: '从研报正文抽取指标级多空观点与逻辑链，结构化输出。', schema: { type: 'object', properties: { report_id: { type: 'string' }, indicators: { type: 'array', items: { type: 'string' }, description: '指定指标，默认全量' }, llm: { type: 'string', description: '抽取模型', default: 'qwen3-72b' } }, required: ['report_id'] }, week: [301, 335, 372, 398, 445, 410, 428], errs: [{ t: '15:10', code: 'MCP_ERR_UPSTREAM_502', msg: 'LLM 抽取网关 502，自动降级轻量模型' }, { t: '16:31', code: 'MCP_ERR_UPSTREAM_TIMEOUT', msg: '长文档抽取超时（>30s）' }] },
-    { name: 'list_datasets', cn: '列出分析数据集', svc: 'anl', sector: '数仓', version: 'v0.8.1', calls: 712, sr: 99.6, lat: 180, on: true, desc: '枚举 CRM / 数仓中已授权的分析数据集与字段字典，供 Agent 选表。', schema: { type: 'object', properties: { source: { type: 'string', enum: ['crm', 'warehouse', 'all'], description: '数据来源，默认 all', default: 'all' }, keyword: { type: 'string', description: '按名称或业务域过滤' } }, required: [] }, week: [540, 588, 610, 655, 690, 668, 712], errs: [{ t: '—', code: '—', msg: '暂无错误记录' }] },
-    { name: 'query_warehouse', cn: '数仓取数', svc: 'anl', sector: '数仓', version: 'v0.8.1', calls: 964, sr: 98.8, lat: 620, on: true, desc: '按数据集 ID 与过滤条件从数仓拉明细 / 汇总，限制返回行数。', schema: { type: 'object', properties: { dataset_id: { type: 'string', description: '如 dw.ads_variety_pnl_d' }, filters: { type: 'string', description: '过滤条件，如 variety=CU AND dt>=2026-01-01' }, metrics: { type: 'array', items: { type: 'string' }, description: '指标列，默认全部' }, limit: { type: 'integer', default: 500, description: '最大行数，上限 5000' } }, required: ['dataset_id'] }, week: [720, 780, 810, 888, 940, 902, 964], errs: [{ t: '11:08', code: 'MCP_ERR_UPSTREAM_TIMEOUT', msg: '数仓查询队列拥堵，已重试成功' }] },
+    { name: 'list_datasets', cn: '列出可查询数据集', svc: 'anl', sector: '数仓', version: 'v0.9.0', calls: 712, sr: 99.6, lat: 180, on: true, desc: '枚举已启用且具备 MCP 列授权的数据集（对齐 vibeBI list + Grant）。', schema: { type: 'object', properties: { keyword: { type: 'string', description: '按名称或表名过滤' } }, required: [] }, week: [540, 588, 610, 655, 690, 668, 712], errs: [{ t: '—', code: '—', msg: '暂无错误记录' }] },
+    { name: 'query_dataset', cn: '按数据权限查询数据集', svc: 'anl', sector: '数仓', version: 'v0.9.0', calls: 964, sr: 98.8, lat: 620, on: true, desc: '按 dataset_id 取数；强制套用 DatasetGrant 列白名单与 row_filter。', schema: { type: 'object', properties: { dataset_id: { type: 'string', description: '数据集 ID' }, limit: { type: 'integer', default: 100, description: '最大行数' } }, required: ['dataset_id'] }, week: [720, 780, 810, 888, 940, 902, 964], errs: [{ t: '11:08', code: 'MCP_ERR_UPSTREAM_TIMEOUT', msg: '数仓查询队列拥堵，已重试成功' }] },
     { name: 'search_crm_accounts', cn: 'CRM 客户检索', svc: 'anl', sector: 'CRM', version: 'v0.7.4', calls: 486, sr: 99.2, lat: 240, on: true, desc: '按名称、行业、跟进人检索 CRM 客户与最近互动。', schema: { type: 'object', properties: { query: { type: 'string', description: '客户名称 / 统一社会信用代码 / 跟进人' }, industry: { type: 'string', description: '行业，可选' }, status: { type: 'string', enum: ['active', 'churn', 'all'], default: 'active' }, limit: { type: 'integer', default: 20 } }, required: ['query'] }, week: [310, 355, 380, 412, 450, 428, 486], errs: [{ t: '09:22', code: 'MCP_ERR_RATE_LIMITED', msg: 'CRM 开放接口触发 10 QPS 限流' }] },
     { name: 'get_crm_pipeline', cn: 'CRM 商机漏斗', svc: 'anl', sector: 'CRM', version: 'v0.7.4', calls: 328, sr: 99.4, lat: 310, on: true, desc: '按时间窗与销售团队汇总商机阶段、金额与转化率。', schema: { type: 'object', properties: { team: { type: 'string', description: '销售团队，默认全部' }, start_date: { type: 'string', format: 'date' }, end_date: { type: 'string', format: 'date' } }, required: [] }, week: [210, 244, 268, 290, 318, 301, 328], errs: [{ t: '—', code: '—', msg: '暂无错误记录' }] },
     { name: 'run_stat_analysis', cn: '统计与相关性分析', svc: 'anl', sector: '数仓', version: 'v0.8.0', calls: 255, sr: 97.8, lat: 1480, on: true, desc: '对选定数据集做描述性统计、分组对比或相关系数，返回结构化结果。', schema: { type: 'object', properties: { dataset_id: { type: 'string' }, method: { type: 'string', enum: ['describe', 'groupby', 'corr'], description: '分析方法', default: 'describe' }, group_by: { type: 'string', description: 'groupby 时的维度列' }, columns: { type: 'array', items: { type: 'string' }, description: '分析列，默认数值列' } }, required: ['dataset_id'] }, week: [160, 188, 201, 220, 248, 232, 255], errs: [{ t: '16:40', code: 'MCP_ERR_UPSTREAM_TIMEOUT', msg: '宽表 corr 计算超过 15s，已降级抽样' }] },
@@ -93,16 +115,22 @@ export const store = reactive({
     { id: 'ck-trial', name: '合作方试用', type: '服务端应用', tag: 'gray', key: 'mcp-sk-9e01…c4b2', calls: 86, quota: 5000, qps: 5, status: 'normal', expire: '2026-09-10 23:59:59', last: '3 天前', toolsetIds: ['ts-analytics'], userId: 'u-cust' },
   ],
   users: [
-    { id: 'u-admin', name: '陈可', email: 'chenke@example.com', phone: '13800001001', kind: 'staff', role: '管理员', tag: 'red', team: '数智中心', status: '正常', created: '2026-08-01', last: '10 分钟前', wecomUserId: 'chenke' },
-    { id: 'u-dev', name: '林舟', email: 'linzhou@example.com', phone: '13800001002', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数智中心', status: '正常', created: '2026-08-12', last: '1 小时前', wecomUserId: 'linzhou' },
-    { id: 'u-an', name: '周研', email: 'zhouyan@example.com', phone: '13800001003', kind: 'staff', role: '研究员', tag: 'green', team: '有色组', status: '正常', created: '2026-09-02', last: '昨天', wecomUserId: 'zhouyan' },
-    { id: 'u-cust', name: '苏岚', email: 'sulan@tongye.example', phone: '13900002001', kind: 'customer', role: '客户', tag: 'gray', team: '某铜业集团', status: '正常', created: '2026-09-10', last: '3 天前' },
-    { id: 'u-wait', name: '王启', email: '', phone: '', kind: 'staff', role: '研究员', tag: 'green', team: '能化组', status: '待注册', created: '2026-09-17', last: '—', wecomUserId: 'wangqi' },
-    { id: 'u-cust-wait', name: '待注册', email: '', phone: '', kind: 'customer', role: '客户', tag: 'gray', team: '华东贸易', status: '待注册', created: '2026-09-18', last: '—', inviteToken: 'inv-cust-demo' },
-    { id: 'u-app', name: '赵衡', email: 'zhaoheng@example.com', phone: '13700001005', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数据分析', status: '待审批', created: '2026-09-18', last: '—', wecomUserId: 'zhaoheng', note: '待从企业微信通讯录确认开通' },
+    { id: 'u-admin', name: '陈可', email: 'chenke@example.com', phone: '13800001001', kind: 'staff', role: '管理员', tag: 'red', team: '数智中心', groupIds: ['数智中心'], status: '正常', created: '2026-08-01', last: '10 分钟前', wecomUserId: 'chenke' },
+    { id: 'u-dev', name: '林舟', email: 'linzhou@example.com', phone: '13800001002', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数智中心', groupIds: ['数智中心'], status: '正常', created: '2026-08-12', last: '1 小时前', wecomUserId: 'linzhou' },
+    { id: 'u-an', name: '周研', email: 'zhouyan@example.com', phone: '13800001003', kind: 'staff', role: '研究员', tag: 'green', team: '有色组', groupIds: ['有色组'], status: '正常', created: '2026-09-02', last: '昨天', wecomUserId: 'zhouyan' },
+    { id: 'u-cust', name: '苏岚', email: 'sulan@tongye.example', phone: '13900002001', kind: 'customer', role: '客户', tag: 'gray', team: '某铜业集团', groupIds: ['某铜业集团'], status: '正常', created: '2026-09-10', last: '3 天前' },
+    { id: 'u-wait', name: '王启', email: '', phone: '', kind: 'staff', role: '研究员', tag: 'green', team: '能化组', groupIds: ['能化组'], status: '待注册', created: '2026-09-17', last: '—', wecomUserId: 'wangqi' },
+    { id: 'u-cust-wait', name: '钱越', email: '', phone: '13900002002', kind: 'customer', role: '客户', tag: 'gray', team: '华东贸易', groupIds: ['华东贸易'], status: '正常', created: '2026-09-18', last: '—', source: 'import' },
+    { id: 'u-app', name: '赵衡', email: 'zhaoheng@example.com', phone: '13700001005', kind: 'staff', role: '开发工程师', tag: 'arcoblue', team: '数据分析', groupIds: ['数据分析'], status: '待审批', created: '2026-09-18', last: '—', wecomUserId: 'zhaoheng', note: '待从企业微信通讯录确认开通' },
   ],
-  invites: [
-    { token: 'inv-cust-demo', kind: 'customer', role: '客户', org: '华东贸易', nameHint: '', status: 'open', created: '2026-09-18', expireAt: '2026-09-25' },
+  userGroups: [
+    { id: '数智中心', name: '数智中心', kind: 'staff', memberIds: ['u-admin', 'u-dev'], desc: '平台管理与工程', updated: '2026-10-15 13:20:00' },
+    { id: '有色组', name: '有色组', kind: 'staff', memberIds: ['u-an'], desc: '有色金属研究', updated: '2026-10-12 09:10:00' },
+    { id: '能化组', name: '能化组', kind: 'staff', memberIds: ['u-wait'], desc: '能源化工研究', updated: '2026-09-17 11:00:00' },
+    { id: '数据分析', name: '数据分析', kind: 'staff', memberIds: ['u-app'], desc: '数据开发与分析', updated: '2026-09-18 16:40:00' },
+    { id: '黑色组', name: '黑色组', kind: 'staff', memberIds: [], desc: '黑色金属研究，暂无开通成员', updated: '2026-08-20 10:00:00' },
+    { id: '某铜业集团', name: '某铜业集团', kind: 'customer', memberIds: ['u-cust'], desc: '外部合作客户', updated: '2026-09-10 14:00:00' },
+    { id: '华东贸易', name: '华东贸易', kind: 'customer', memberIds: ['u-cust-wait'], desc: '华东区贸易合作方', updated: '2026-09-18 09:00:00' },
   ],
   rules: [
     { name: '调用成功率低于 99%（持续 5 分钟）', level: '严重', tag: 'red', notify: '飞书 + 企业微信', on: true },
@@ -129,6 +157,17 @@ export const store = reactive({
   logFilter: 'all',
   flt: { svc: 'all', sector: 'all', platform: 'all', kw: '' },
   platforms: ['同花顺', 'SMM', '上海钢联', 'CRM 系统', '数仓'],
+  sources: [
+    { id: 'src-ths', name: '同花顺', code: 'ths', kind: 'mysql', envKey: 'METRIC_DSN', host: 'rm-metric.mysql.rds.aliyuncs.com', port: 3306, database: 'metric', user: 'big_data_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 10, metricSource: 1, status: 'connected', latency: 38, lastCheck: '2026-10-15 13:18:02', lastError: '', enabled: true, note: '指标库 base_from_ths_*', svcIds: ['mkt'] },
+    { id: 'src-smm', name: 'SMM', code: 'smm', kind: 'mysql', envKey: 'METRIC_DSN', host: 'rm-metric.mysql.rds.aliyuncs.com', port: 3306, database: 'metric', user: 'big_data_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 10, metricSource: 9, status: 'connected', latency: 54, lastCheck: '2026-10-15 13:18:06', lastError: '', enabled: true, note: '指标库 base_from_smm_*', svcIds: ['fund'] },
+    { id: 'src-ms', name: '上海钢联', code: 'mysteel', kind: 'mysql', envKey: 'METRIC_DSN', host: 'rm-metric.mysql.rds.aliyuncs.com', port: 3306, database: 'metric', user: 'big_data_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 10, metricSource: 11, status: 'connected', latency: 61, lastCheck: '2026-10-15 13:18:09', lastError: '', enabled: true, note: '化工指标 base_from_mysteel_chemical_*', svcIds: ['fund'] },
+    { id: 'src-manual', name: '手工录入', code: 'manual', kind: 'mysql', envKey: 'METRIC_DSN', host: 'rm-metric.mysql.rds.aliyuncs.com', port: 3306, database: 'metric', user: 'big_data_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 10, metricSource: 34, status: 'connected', latency: 29, lastCheck: '2026-10-15 13:18:12', lastError: '', enabled: true, note: '指标库 base_from_manual_*', svcIds: ['fund'] },
+    { id: 'src-edb', name: 'EDB 指标库', code: 'edb', kind: 'mysql', envKey: 'METRIC_DSN', host: 'rm-metric.mysql.rds.aliyuncs.com', port: 3306, database: 'metric', user: 'big_data_read', passwordSet: true, accessMode: 'read', vpcMode: true, vpcId: 'vpc-metric-demo', readonly: true, timeout: 10, metricSource: null, status: 'connected', latency: 44, lastCheck: '2026-10-15 13:18:15', lastError: '', enabled: true, note: 'edb_info / edb_series_data', svcIds: ['mkt'] },
+    { id: 'src-crm', name: 'CRM 系统', code: 'crm', kind: 'mysql', envKey: 'CRM_DSN', host: 'rm-crm.mysql.rds.aliyuncs.com', port: 3306, database: 'crm', user: 'crm_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 8, metricSource: null, status: 'connected', latency: 72, lastCheck: '2026-10-15 13:12:40', lastError: '', enabled: true, note: '客户与商机，不与数仓混连', svcIds: ['anl'] },
+    { id: 'src-dw', name: '数仓', code: 'warehouse', kind: 'mysql', envKey: 'DW_DSN', host: 'rm-dw.mysql.rds.aliyuncs.com', port: 3306, database: 'ads', user: 'dw_read', passwordSet: true, accessMode: 'read', vpcMode: true, vpcId: 'vpc-dw-demo', readonly: true, timeout: 30, metricSource: null, status: 'connected', latency: 186, lastCheck: '2026-10-15 13:11:18', lastError: '', enabled: true, note: '分析数据集，独立超时', svcIds: ['anl'] },
+    { id: 'src-ora-risk', name: '风控仓单库', code: 'risk_wh', kind: 'oracle', envKey: 'RISK_DSN', host: 'ora-risk.example.com', port: 1521, database: '', connectMode: 'service', serviceName: 'RISKDB', sid: '', schema: 'RISK', user: 'risk_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 15, metricSource: null, status: 'connected', latency: 92, lastCheck: '2026-10-15 13:18:20', lastError: '', enabled: true, note: '仓单按 schema 授权，视图已去掉货主', svcIds: ['mkt'] },
+    { id: 'src-customs', name: '海关开放接口', code: 'customs', kind: 'http', envKey: 'CUSTOMS_BASE_URL', host: '', port: 443, database: '', user: '', passwordSet: false, baseUrl: 'https://api.customs.example/v1', accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 8, metricSource: null, status: 'failed', latency: null, lastCheck: '2026-10-15 09:47:11', lastError: '上游网关 502', enabled: true, note: '进出口与发运，禁止并进指标库连接池', svcIds: ['fund'] },
+  ],
   hubTab: 'services',
   toolsets: [
     {
@@ -159,12 +198,22 @@ export const store = reactive({
       mode: 'semantic',
       status: 'running',
       created: '2026-09-16 09:18:22',
-      tools: ['list_datasets', 'query_warehouse', 'search_crm_accounts', 'get_crm_pipeline', 'run_stat_analysis'],
+      tools: ['list_datasets', 'query_dataset', 'search_crm_accounts', 'get_crm_pipeline', 'run_stat_analysis'],
     },
   ],
   mcpConfig: { visible: false, svcId: null, toolsetId: null, apiKey: null, expire: undefined, once: false },
   clientFlt: { toolsetId: '', userId: '', openIssue: false, kw: '' },
   userFlt: { kw: '' },
+  groupFlt: { kw: '' },
+  sourceFlt: { kw: '' },
+  datasets: [],
+  datasetFolders: [],
+  datasetGrants: [],
+  datasetFlt: { kw: '', sourceId: '', type: 'all' },
+  securityFlt: { kw: '' },
+  studioDatasetId: '',
+  editDatasetId: '',
+  openModelDrawer: false,
   playground: {
     visible: false,
     endpoint: '',
@@ -172,6 +221,9 @@ export const store = reactive({
     proto: 'Streamable HTTP',
     toolName: '',
     allowTools: null,
+  },
+  ui: {
+    openSourceWizard: false,
   },
 })
 
@@ -186,8 +238,8 @@ export const CLIENT_TYPES = [
   { value: 'cyan', label: 'IDE 插件' },
 ]
 export const USER_KINDS = [
-  { value: 'staff', label: '内部员工', tag: 'arcoblue', desc: '从企业微信通讯录选择同事开通，手机号与企业邮箱由企微返回' },
-  { value: 'customer', label: '外部客户', tag: 'orangered', desc: '合作方 / 产业客户，须持邀请链接注册，默认 90 天低配额' },
+  { value: 'staff', label: '内部员工', tag: 'arcoblue', desc: '企业员工，可从企业微信通讯录添加或导入注册' },
+  { value: 'customer', label: '外部客户', tag: 'orangered', desc: '合作方 / 产业客户，由管理员导入注册，默认 90 天低配额' },
 ]
 export const USER_ROLES = [
   { value: '管理员', tag: 'red' },
@@ -200,6 +252,61 @@ export function kindMeta(kind) {
 }
 export function roleTag(role) {
   return USER_ROLES.find((r) => r.value === role)?.tag || 'gray'
+}
+export function groupKindMeta(kind) {
+  return kind === 'customer'
+    ? { label: '外部客户组', tag: 'orangered' }
+    : { label: '内部员工组', tag: 'arcoblue' }
+}
+export function membersOfGroup(g) {
+  const ids = new Set(g?.memberIds || [])
+  return store.users.filter((u) => ids.has(u.id))
+}
+function nowStamp() {
+  const d = new Date()
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+function syncUserGroupIds(groupId, memberIds) {
+  const set = new Set(memberIds || [])
+  store.users.forEach((u) => {
+    const ids = new Set(u.groupIds || [])
+    if (set.has(u.id)) ids.add(groupId)
+    else ids.delete(groupId)
+    u.groupIds = [...ids]
+  })
+}
+export function saveUserGroup(payload) {
+  const name = String(payload?.name || '').trim()
+  if (!name) return null
+  const memberIds = [...new Set(payload.memberIds || [])]
+  const kind = payload.kind === 'customer' ? 'customer' : 'staff'
+  const desc = String(payload.desc || '').trim()
+  const updated = nowStamp()
+  if (payload.id) {
+    const g = store.userGroups.find((x) => x.id === payload.id)
+    if (!g) return null
+    g.name = name
+    g.kind = kind
+    g.memberIds = memberIds
+    g.desc = desc
+    g.updated = updated
+    syncUserGroupIds(g.id, memberIds)
+    return g
+  }
+  const taken = store.userGroups.some((x) => x.id === name || x.name === name)
+  const id = taken ? `g-${Date.now().toString(36)}` : name
+  const g = { id, name, kind, memberIds, desc, updated }
+  store.userGroups.push(g)
+  syncUserGroupIds(g.id, memberIds)
+  return g
+}
+export function removeUserGroup(id) {
+  const i = store.userGroups.findIndex((g) => g.id === id)
+  if (i < 0) return false
+  syncUserGroupIds(id, [])
+  store.userGroups.splice(i, 1)
+  return true
 }
 
 export const WECOM_DEPTS = ['数智中心', '有色组', '能化组', '数据分析', '黑色组']
@@ -222,6 +329,16 @@ export function wecomMemberStatus(m) {
   if (!u) return { bound: false, status: '', user: null }
   return { bound: u.status === '正常', status: u.status, user: u }
 }
+function attachUserToDeptGroup(user, dept) {
+  if (!user || !dept) return
+  let g = store.userGroups.find((x) => x.id === dept || x.name === dept)
+  if (!g) {
+    g = { id: dept, name: dept, kind: user.kind === 'customer' ? 'customer' : 'staff', memberIds: [], desc: '开通账号时自动创建', updated: nowStamp() }
+    store.userGroups.push(g)
+  }
+  user.groupIds = [...new Set([...(user.groupIds || []), g.id])]
+  if (!(g.memberIds || []).includes(user.id)) g.memberIds.push(user.id)
+}
 export function importStaffFromWecom(members, role = '研究员') {
   const created = []
   const updated = []
@@ -240,6 +357,7 @@ export function importStaffFromWecom(members, role = '研究员') {
       hit.user.status = '正常'
       hit.user.last = '刚刚'
       hit.user.source = 'wecom'
+      attachUserToDeptGroup(hit.user, m.dept)
       updated.push(hit.user)
       return
     }
@@ -252,6 +370,7 @@ export function importStaffFromWecom(members, role = '研究员') {
       role,
       tag: roleTag(role),
       team: m.dept,
+      groupIds: [],
       status: '正常',
       created: today,
       last: '刚刚',
@@ -259,79 +378,49 @@ export function importStaffFromWecom(members, role = '研究员') {
       source: 'wecom',
     }
     store.users.unshift(user)
+    attachUserToDeptGroup(user, m.dept)
     created.push(user)
   })
   return { created, updated }
 }
-export function mintInviteToken() {
-  const n = Math.random().toString(36).slice(2, 10)
-  return 'inv-' + n
+export const PHONE_RE = /^1\d{10}$/
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+export function registerUsers(rows, opts = {}) {
+  const kind = opts.kind === 'customer' ? 'customer' : 'staff'
+  const role = opts.role || (kind === 'customer' ? '客户' : '研究员')
+  const org = String(opts.org || '').trim()
+  const today = new Date().toISOString().slice(0, 10)
+  const created = []
+  const skipped = []
+  rows.forEach((r, i) => {
+    const phone = String(r.phone || '').trim()
+    const name = String(r.name || '').trim()
+    const email = String(r.email || '').trim()
+    if (store.users.some((u) => u.phone && u.phone === phone)) {
+      skipped.push({ row: i + 1, phone, reason: '手机号已注册' })
+      return
+    }
+    if (email && store.users.some((u) => u.email && u.email === email)) {
+      skipped.push({ row: i + 1, phone, reason: '邮箱已被占用' })
+      return
+    }
+    const user = {
+      id: 'u-' + Date.now().toString(36) + i,
+      name, phone, email, kind, role,
+      tag: roleTag(role),
+      team: org,
+      groupIds: [],
+      status: '正常',
+      created: today,
+      last: '—',
+      source: 'import',
+    }
+    store.users.unshift(user)
+    if (org) attachUserToDeptGroup(user, org)
+    created.push(user)
+  })
+  return { created, skipped }
 }
-export function inviteUrl(token) {
-  const base = typeof location !== 'undefined' ? `${location.origin}${location.pathname}` : ''
-  return `${base}#register?t=${encodeURIComponent(token)}`
-}
-export function findInvite(token) {
-  return store.invites.find((i) => i.token === token)
-}
-function plusDays(n) {
-  const d = new Date()
-  d.setDate(d.getDate() + n)
-  return d.toISOString().slice(0, 10)
-}
-export function createInvite(opts = {}) {
-  const kind = 'customer'
-  const role = '客户'
-  const org = (opts.org || '').trim() || '外部客户'
-  const nameHint = (opts.name || '').trim()
-  const token = mintInviteToken()
-  const created = new Date().toISOString().slice(0, 10)
-  const invite = { token, kind, role, org, nameHint, status: 'open', created, expireAt: plusDays(7) }
-  store.invites.unshift(invite)
-  const user = {
-    id: 'u-' + Date.now().toString(36),
-    name: nameHint || '待注册',
-    email: '',
-    phone: '',
-    kind,
-    role,
-    tag: roleTag(role),
-    team: org,
-    status: '待注册',
-    inviteToken: token,
-    created,
-    last: '—',
-  }
-  store.users.unshift(user)
-  return { invite, user, url: inviteUrl(token) }
-}
-export function registerByInvite(token, payload = {}) {
-  const invite = findInvite(token)
-  if (!invite) return { ok: false, msg: '邀请链接无效' }
-  if (invite.status !== 'open') return { ok: false, msg: '该链接已使用或已作废' }
-  if (invite.expireAt && invite.expireAt < new Date().toISOString().slice(0, 10)) {
-    return { ok: false, msg: '邀请链接已过期，请联系管理员重新发送' }
-  }
-  const name = String(payload.name || '').trim()
-  const phone = String(payload.phone || '').trim()
-  const email = String(payload.email || '').trim()
-  if (!name || !phone) return { ok: false, msg: '请填写姓名与手机号' }
-  if (!/^1\d{10}$/.test(phone)) return { ok: false, msg: '请填写 11 位手机号' }
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, msg: '登录邮箱格式不正确' }
-  if (store.users.some((u) => u.inviteToken !== token && (u.phone === phone || (email && u.email === email)))) {
-    return { ok: false, msg: email ? '手机号或登录邮箱已被占用' : '手机号已被占用' }
-  }
-  const user = store.users.find((u) => u.inviteToken === token)
-  if (!user) return { ok: false, msg: '邀请不存在' }
-  user.name = name
-  user.phone = phone
-  user.email = email
-  user.status = '正常'
-  user.last = '刚刚'
-  invite.status = 'used'
-  return { ok: true, user }
-}
-
 export function mintApiKey() {
   const bytes = (typeof crypto !== 'undefined' && crypto.getRandomValues)
     ? [...crypto.getRandomValues(new Uint8Array(16))]
@@ -402,10 +491,168 @@ export function keyForEndpoint(endpoint) {
   return c?.secret || c?.key || 'mcp-sk-console-self-test'
 }
 
+hydrateSources(store.sources)
+hydrateDatasetFolders(store)
+hydrateDatasets(store)
+syncServiceSources()
+
+export const SOURCE_KINDS = [
+  { value: 'mysql', label: 'MySQL', desc: '对齐 vibeBI：服务器、端口、库名、用户名、密码；测连后同步 Schema 生成数据集。' },
+  { value: 'oracle', label: 'Oracle', desc: '后续支持。主机、端口、Service Name 或 SID，再加 schema。' },
+  { value: 'http', label: 'HTTP 接口', desc: '上游开放接口。与数据库分开计超时，失败信息带上游名。' },
+]
+export const ACCESS_MODES = [
+  { value: 'read', label: '读' },
+  { value: 'write', label: '写' },
+]
+export const CONNECTOR_TABS = [
+  { id: 'aliyun', label: '阿里云数据库' },
+  { id: 'self', label: '自建数据库' },
+  { id: 'cloud', label: '其他云数据库' },
+  { id: 'api', label: '接口' },
+]
+export const DATABASE_TYPES = [
+  { type: 'mysql', label: 'MySQL', port: 3306, envKey: 'MYSQL_DSN', enabled: true, desc: '关系型数据库' },
+  { type: 'clickhouse', label: 'ClickHouse', port: 8123, envKey: 'CLICKHOUSE_DSN', enabled: true, desc: '列式分析库' },
+  { type: 'hive', label: 'Hive', port: 10000, envKey: 'HIVE_DSN', enabled: true, desc: 'Hive / Spark SQL' },
+  { type: 'oracle', label: 'Oracle', port: 1521, envKey: 'ORACLE_DSN', enabled: true, desc: '关系型数据库' },
+  { type: 'postgresql', label: 'PostgreSQL', port: 5432, envKey: 'PG_DSN', enabled: true, desc: '关系型数据库' },
+  { type: 'sqlserver', label: 'SQL Server', port: 1433, envKey: 'MSSQL_DSN', enabled: true, desc: '关系型数据库' },
+  { type: 'mongodb', label: 'MongoDB', port: 27017, envKey: 'MONGO_URI', enabled: true, desc: '文档数据库' },
+  { type: 'doris', label: 'Apache Doris', port: 9030, envKey: 'DORIS_DSN', enabled: true, desc: '实时数仓' },
+  { type: 'starrocks', label: 'StarRocks', port: 9030, envKey: 'STARROCKS_DSN', enabled: true, desc: '分析型数据库' },
+  { type: 'tidb', label: 'TiDB', port: 4000, envKey: 'TIDB_DSN', enabled: true, desc: '分布式关系库' },
+  { type: 'dameng', label: '达梦', port: 5236, envKey: 'DM_DSN', enabled: true, desc: '国产关系库' },
+  { type: 'http', label: 'HTTP 接口', port: 443, envKey: 'HTTP_BASE_URL', enabled: true, desc: '上游开放接口' },
+]
+export function findDatabaseType(type) {
+  return DATABASE_TYPES.find((t) => t.type === type) || DATABASE_TYPES[0]
+}
+export const CONNECTORS = [
+  { id: 'aliyun-rds-mysql', type: 'mysql', vendor: 'aliyun', tab: 'aliyun', label: 'RDS MySQL 版', enabled: true, port: 3306, desc: '公网或 VPC 连通阿里云 RDS MySQL 5.5–8.0。' },
+  { id: 'aliyun-mysql-duckdb', type: 'mysql', vendor: 'aliyun', tab: 'aliyun', label: 'RDS MySQL DuckDB', enabled: false, port: 3306, desc: '即将支持。' },
+  { id: 'aliyun-adb-mysql', type: 'mysql', vendor: 'aliyun', tab: 'aliyun', label: 'AnalyticDB MySQL', enabled: false, port: 3306, desc: '即将支持。' },
+  { id: 'aliyun-polardb-mysql', type: 'mysql', vendor: 'aliyun', tab: 'aliyun', label: 'PolarDB MySQL 版', enabled: false, port: 3306, desc: '即将支持。' },
+  { id: 'aliyun-maxcompute', type: 'maxcompute', vendor: 'aliyun', tab: 'aliyun', label: 'MaxCompute', enabled: false, port: 0, desc: '即将支持。' },
+  { id: 'aliyun-hologres', type: 'hologres', vendor: 'aliyun', tab: 'aliyun', label: 'Hologres', enabled: false, port: 80, desc: '即将支持。' },
+  { id: 'aliyun-clickhouse', type: 'clickhouse', vendor: 'aliyun', tab: 'aliyun', label: 'ClickHouse', enabled: false, port: 8123, desc: '即将支持。' },
+  { id: 'aliyun-adb-pg', type: 'postgresql', vendor: 'aliyun', tab: 'aliyun', label: 'AnalyticDB PostgreSQL', enabled: false, port: 5432, desc: '即将支持。' },
+  { id: 'aliyun-oceanbase', type: 'oceanbase', vendor: 'aliyun', tab: 'aliyun', label: 'OceanBase', enabled: false, port: 2883, desc: '即将支持。' },
+  { id: 'aliyun-lindorm', type: 'lindorm', vendor: 'aliyun', tab: 'aliyun', label: 'Lindorm', enabled: false, port: 30060, desc: '即将支持。' },
+  { id: 'aliyun-sls', type: 'sls', vendor: 'aliyun', tab: 'aliyun', label: '日志服务 SLS', enabled: false, port: 0, desc: '即将支持。' },
+  { id: 'aliyun-es', type: 'elasticsearch', vendor: 'aliyun', tab: 'aliyun', label: 'Elasticsearch', enabled: false, port: 9200, desc: '即将支持。' },
+  { id: 'self-mysql', type: 'mysql', vendor: 'self', tab: 'self', label: 'MySQL', enabled: true, port: 3306, desc: '自建 MySQL 5.5 / 5.6 / 5.7 / 8.0，支持公网、VPC 与 SSH 隧道。' },
+  { id: 'self-oracle', type: 'oracle', vendor: 'self', tab: 'self', label: 'Oracle', enabled: true, port: 1521, desc: '自建 Oracle。' },
+  { id: 'self-pg', type: 'postgresql', vendor: 'self', tab: 'self', label: 'PostgreSQL', enabled: true, port: 5432, desc: '自建 PostgreSQL。' },
+  { id: 'self-sqlserver', type: 'sqlserver', vendor: 'self', tab: 'self', label: 'SQL Server', enabled: true, port: 1433, desc: '自建 SQL Server。' },
+  { id: 'self-hive', type: 'hive', vendor: 'self', tab: 'self', label: 'Hive', enabled: true, port: 10000, desc: 'Hive / Spark SQL。' },
+  { id: 'self-clickhouse', type: 'clickhouse', vendor: 'self', tab: 'self', label: 'ClickHouse', enabled: true, port: 8123, desc: '自建 ClickHouse。' },
+  { id: 'self-mongodb', type: 'mongodb', vendor: 'self', tab: 'self', label: 'MongoDB', enabled: true, port: 27017, desc: '自建 MongoDB。' },
+  { id: 'self-doris', type: 'doris', vendor: 'self', tab: 'self', label: 'Apache Doris', enabled: true, port: 9030, desc: '自建 Apache Doris。' },
+  { id: 'self-starrocks', type: 'starrocks', vendor: 'self', tab: 'self', label: 'StarRocks', enabled: true, port: 9030, desc: '自建 StarRocks。' },
+  { id: 'self-tidb', type: 'tidb', vendor: 'self', tab: 'self', label: 'TiDB', enabled: true, port: 4000, desc: '自建 TiDB。' },
+  { id: 'self-dm', type: 'dameng', vendor: 'self', tab: 'self', label: '达梦', enabled: true, port: 5236, desc: '自建达梦。' },
+  { id: 'self-hana', type: 'hana', vendor: 'self', tab: 'self', label: 'SAP HANA', enabled: false, port: 30015, desc: '即将支持。' },
+  { id: 'self-snowflake', type: 'snowflake', vendor: 'self', tab: 'self', label: 'Snowflake', enabled: false, port: 443, desc: '即将支持。' },
+  { id: 'tencent-mysql', type: 'mysql', vendor: 'tencent', tab: 'cloud', label: 'TencentDB for MySQL', enabled: true, port: 3306, desc: '腾讯云 MySQL，配置方式与 RDS MySQL 相同。' },
+  { id: 'huawei-mysql', type: 'mysql', vendor: 'huawei', tab: 'cloud', label: 'RDS for MySQL', enabled: true, port: 3306, desc: '华为云 MySQL。' },
+  { id: 'azure-mysql', type: 'mysql', vendor: 'azure', tab: 'cloud', label: 'Azure Database for MySQL', enabled: true, port: 3306, desc: '微软云 MySQL。' },
+  { id: 'aws-mysql', type: 'mysql', vendor: 'aws', tab: 'cloud', label: 'RDS for MySQL', enabled: true, port: 3306, desc: 'AWS RDS MySQL。' },
+  { id: 'aws-aurora-mysql', type: 'mysql', vendor: 'aws', tab: 'cloud', label: 'Aurora MySQL', enabled: false, port: 3306, desc: '即将支持。' },
+  { id: 'http', type: 'http', vendor: 'self', tab: 'api', label: 'HTTP 接口', enabled: true, port: 443, desc: '上游开放接口，不走表同步。' },
+]
+export const VENDOR_LABELS = {
+  aliyun: '阿里云',
+  tencent: '腾讯云',
+  huawei: '华为云',
+  azure: '微软云',
+  aws: 'AWS',
+  self: '自建',
+}
+export const ALIYUN_REGIONS = [
+  { value: 'cn-hangzhou', label: '华东1（杭州）' },
+  { value: 'cn-shanghai', label: '华东2（上海）' },
+  { value: 'cn-beijing', label: '华北2（北京）' },
+  { value: 'cn-shenzhen', label: '华南1（深圳）' },
+  { value: 'cn-zhangjiakou', label: '华北3（张家口）' },
+  { value: 'cn-hongkong', label: '中国香港' },
+]
+export const DEMO_RDS_INSTANCES = [
+  { id: 'rm-metric', name: '指标库 RDS', host: 'rm-metric.mysql.rds.aliyuncs.com', port: 3306, region: 'cn-hangzhou', version: '5.7' },
+  { id: 'rm-crm', name: 'CRM RDS', host: 'rm-crm.mysql.rds.aliyuncs.com', port: 3306, region: 'cn-hangzhou', version: '8.0' },
+  { id: 'rm-dw', name: '数仓 RDS', host: 'rm-dw.mysql.rds.aliyuncs.com', port: 3306, region: 'cn-shanghai', version: '8.0' },
+]
+export const MCP_WHITELIST = {
+  public: ['47.96.81.16/28', '47.98.220.32/28', '121.41.68.48/28'],
+  vpc: ['100.104.0.0/16'],
+}
+export function whitelistText() {
+  return `公网：${MCP_WHITELIST.public.join('、')}\nVPC：${MCP_WHITELIST.vpc.join('、')}`
+}
+export function inferConnector(src) {
+  if (!src) return CONNECTORS.find((c) => c.id === 'self-mysql')
+  if (src.connectorId) {
+    const hit = CONNECTORS.find((c) => c.id === src.connectorId)
+    if (hit) return hit
+  }
+  if (src.kind === 'http') return CONNECTORS.find((c) => c.id === 'http')
+  if (src.kind === 'mysql' && String(src.host || '').includes('rds.aliyuncs.com')) {
+    return CONNECTORS.find((c) => c.id === 'aliyun-rds-mysql')
+  }
+  return CONNECTORS.find((c) => c.type === src.kind && c.vendor === 'self')
+    || CONNECTORS.find((c) => c.type === src.kind)
+    || CONNECTORS.find((c) => c.id === 'self-mysql')
+}
+export function datasetsOfSource(sourceId) {
+  return store.datasets.filter((d) => d.data_source_id === sourceId)
+}
+export function findSource(id) {
+  return store.sources.find((s) => s.id === id) || null
+}
 export function platformOptions() {
   const set = new Set(store.platforms)
+  store.sources.forEach((s) => { if (s.name) set.add(s.name) })
   store.services.forEach((s) => (s.sources || []).forEach((x) => { if (x) set.add(x) }))
   return [...set]
+}
+export function servicesBoundTo(src) {
+  if (!src) return []
+  const ids = new Set(src.svcIds || [])
+  return store.services.filter((s) => ids.has(s.id))
+}
+export function sourceIdsOfService(svc) {
+  if (!svc) return []
+  return store.sources.filter((s) => (s.svcIds || []).includes(svc.id)).map((s) => s.id)
+}
+export function syncServiceSources() {
+  store.services.forEach((svc) => {
+    if (svc.builtin) {
+      const ids = new Set(store.tools.filter((t) => t.svc === svc.id && t.dataset?.sourceId).map((t) => t.dataset.sourceId))
+      svc.sources = store.sources.filter((s) => ids.has(s.id)).map((s) => s.name)
+      return
+    }
+    svc.sources = store.sources.filter((s) => (s.svcIds || []).includes(svc.id)).map((s) => s.name)
+  })
+}
+export function setServiceSources(svc, sourceIds) {
+  if (!svc || svc.builtin) return
+  const want = new Set(sourceIds || [])
+  store.sources.forEach((src) => {
+    const ids = new Set(src.svcIds || [])
+    if (want.has(src.id)) ids.add(svc.id)
+    else ids.delete(svc.id)
+    src.svcIds = [...ids]
+  })
+  syncServiceSources()
+}
+export function syncSourceBinding(src) {
+  rememberPlatforms([src.name])
+  syncServiceSources()
+}
+export function detachSource(src) {
+  const i = store.sources.findIndex((s) => s.id === src.id)
+  if (i >= 0) store.sources.splice(i, 1)
+  syncServiceSources()
 }
 export function rememberPlatforms(names) {
   ;(names || []).forEach((n) => {
@@ -503,15 +750,12 @@ export function createToolsetFromService(svc, toolNames) {
     tools: [...names],
   }
   store.toolsets.unshift(ts)
-  issueClient({
-    name: `${ts.name} 接入`,
-    tag: 'blue',
-    qps: 10,
-    quota: 20000,
-    expire: null,
-    toolsetIds: [ts.id],
-  })
   return ts
+}
+export function gotoIssueKey(opts = {}) {
+  store.clientFlt.toolsetId = opts.toolsetId || ''
+  store.clientFlt.userId = opts.userId || ''
+  store.clientFlt.openIssue = true
 }
 
 export function toolsetEndpoint(ts) {

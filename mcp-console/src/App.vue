@@ -9,47 +9,102 @@ import Tools from './views/Tools.vue'
 import Monitor from './views/Monitor.vue'
 import Clients from './views/Clients.vue'
 import Users from './views/Users.vue'
-import Register from './views/Register.vue'
+import UserGroups from './views/UserGroups.vue'
 import Alerts from './views/Alerts.vue'
+import Sources from './views/Sources.vue'
+import Datasets from './views/Datasets.vue'
+import DataSecurity from './views/DataSecurity.vue'
+import DatasetCreate from './views/DatasetCreate.vue'
+import DatasetStudio from './views/DatasetStudio.vue'
 import Sequence from './views/Sequence.vue'
 import Docs from './views/Docs.vue'
 import McpPlayground from './components/McpPlayground.vue'
 import SiderFoldIcon from './components/SiderFoldIcon.vue'
 import McpMark from './components/McpMark.vue'
 
-const CONSOLE_MENUS = [
-  { id: 'overview', t: '概览' },
-  { id: 'services', t: 'MCP 中心' },
-  { id: 'tools', t: '工具目录' },
-  { id: 'monitor', t: '调用监控' },
-  { id: 'users', t: '用户管理' },
-  { id: 'clients', t: '接入与密钥' },
-  { id: 'alerts', t: '告警中心' },
+const MENU = [
+  { key: 'org', title: '组织管理', short: '组织', icon: 'icon-user-group', items: [
+    { key: 'users', label: '用户管理', icon: 'icon-user' },
+    { key: 'groups', label: '用户组管理', icon: 'icon-user-group' },
+  ] },
+  { key: 'data', title: '数据管理', short: '数据', icon: 'icon-apps', items: [
+    { key: 'sources', label: '数据源', icon: 'icon-link' },
+    { key: 'datasets', label: '数据集', icon: 'icon-file' },
+    { key: 'security', label: '数据权限', icon: 'icon-lock' },
+  ] },
+  { key: 'mcp', title: 'MCP 管理', short: 'MCP', icon: 'icon-storage', items: [
+    { key: 'services', label: 'MCP 中心', icon: 'icon-cloud' },
+    { key: 'tools', label: '工具目录', icon: 'icon-list' },
+    { key: 'clients', label: '接入与密钥', icon: 'icon-safe' },
+  ] },
+  { key: 'ops', title: '监控管理', short: '监控', icon: 'icon-dashboard', items: [
+    { key: 'overview', label: '概览', icon: 'icon-dashboard' },
+    { key: 'monitor', label: '调用监控', icon: 'icon-bar-chart' },
+    { key: 'alerts', label: '告警中心', icon: 'icon-notification', badge: true },
+  ] },
 ]
-const TOP_VIEWS = new Set(['docs', 'sequence', 'register'])
-const views = { overview: Overview, services: Services, tools: Tools, monitor: Monitor, sequence: Sequence, docs: Docs, clients: Clients, users: Users, alerts: Alerts, register: Register }
+const DATA_IDS = new Set(['sources', 'datasets', 'security'])
+const MCP_IDS = new Set(['services', 'tools', 'clients'])
+const OPS_IDS = new Set(['overview', 'monitor', 'alerts'])
+const ORG_IDS = new Set(['users', 'groups'])
+const CONSOLE_IDS = new Set(['overview', 'services', 'tools', 'monitor', 'users', 'groups', 'clients', 'alerts'])
+const TOP_VIEWS = new Set(['docs', 'sequence'])
+const CREATE_IDS = new Set(['dataset-create', 'dataset-sql', 'dataset-studio'])
+const LIST_IDS = new Set([...CONSOLE_IDS, ...DATA_IDS])
+const views = { overview: Overview, sources: Sources, datasets: Datasets, security: DataSecurity, 'dataset-create': DatasetCreate, 'dataset-sql': DatasetCreate, 'dataset-studio': DatasetStudio, services: Services, tools: Tools, monitor: Monitor, sequence: Sequence, docs: Docs, clients: Clients, users: Users, groups: UserGroups, alerts: Alerts }
 const cur = ref('overview')
-const lastConsole = ref('overview')
 const collapsed = ref(false)
 const search = ref('')
-const shell = computed(() => (TOP_VIEWS.has(cur.value) ? cur.value : 'console'))
+const openKeys = ref(['org', 'data', 'mcp', 'ops'])
+const shell = computed(() => {
+  if (TOP_VIEWS.has(cur.value)) return cur.value
+  return 'app'
+})
+const siderOn = computed(() => LIST_IDS.has(cur.value))
+const selectedMenu = computed(() => (CREATE_IDS.has(cur.value) ? 'datasets' : cur.value))
 
 function hashView() {
   return (location.hash || '').replace(/^#/, '').split('?')[0]
 }
 function showView(id) {
+  if (id === 'workbench' || id === 'data') {
+    showView('sources')
+    return
+  }
   if (TOP_VIEWS.has(id)) {
     cur.value = id
     history.replaceState(null, '', '#' + id)
     return
   }
-  if (!CONSOLE_MENUS.some((m) => m.id === id)) return
-  lastConsole.value = id
-  cur.value = id
-  history.replaceState(null, '', '#' + id)
+  if (id === 'dataset-create') {
+    store.openModelDrawer = true
+    cur.value = 'dataset-studio'
+    history.replaceState(null, '', '#dataset-studio')
+    return
+  }
+  if (CREATE_IDS.has(id) || LIST_IDS.has(id)) {
+    if (DATA_IDS.has(id) || CREATE_IDS.has(id)) ensureDataMenuOpen()
+    if (MCP_IDS.has(id)) ensureMcpMenuOpen()
+    if (OPS_IDS.has(id)) ensureOpsMenuOpen()
+    if (ORG_IDS.has(id)) ensureOrgMenuOpen()
+    cur.value = id
+    history.replaceState(null, '', '#' + id)
+  }
 }
-function openConsole() {
-  showView(lastConsole.value || 'overview')
+function ensureDataMenuOpen() {
+  if (!openKeys.value.includes('data')) openKeys.value = [...openKeys.value, 'data']
+}
+function ensureMcpMenuOpen() {
+  if (!openKeys.value.includes('mcp')) openKeys.value = [...openKeys.value, 'mcp']
+}
+function ensureOpsMenuOpen() {
+  if (!openKeys.value.includes('ops')) openKeys.value = [...openKeys.value, 'ops']
+}
+function ensureOrgMenuOpen() {
+  if (!openKeys.value.includes('org')) openKeys.value = [...openKeys.value, 'org']
+}
+function openHome() {
+  showView('overview')
 }
 function onMenu(key) {
   store.clientFlt.toolsetId = ''
@@ -59,10 +114,29 @@ function onMenu(key) {
 }
 function syncHash() {
   const h = hashView()
+  if (h === 'workbench' || h === 'data') {
+    cur.value = 'sources'
+    ensureDataMenuOpen()
+    history.replaceState(null, '', '#sources')
+    return
+  }
   if (TOP_VIEWS.has(h)) cur.value = h
-  else if (CONSOLE_MENUS.some((m) => m.id === h)) {
-    lastConsole.value = h
+  else if (h === 'dataset-create') {
+    store.openModelDrawer = true
+    cur.value = 'dataset-studio'
+    ensureDataMenuOpen()
+    history.replaceState(null, '', '#dataset-studio')
+  } else if (CREATE_IDS.has(h)) {
     cur.value = h
+    ensureDataMenuOpen()
+  } else if (DATA_IDS.has(h)) {
+    cur.value = h
+    ensureDataMenuOpen()
+  } else if (CONSOLE_IDS.has(h)) {
+    cur.value = h
+    if (MCP_IDS.has(h)) ensureMcpMenuOpen()
+    if (OPS_IDS.has(h)) ensureOpsMenuOpen()
+    if (ORG_IDS.has(h)) ensureOrgMenuOpen()
   }
 }
 
@@ -96,23 +170,35 @@ async function copyCfg() {
 
 const searchPh = computed(() => {
   if (cur.value === 'users') return '搜索姓名 / 手机 / 登录邮箱'
+  if (cur.value === 'groups') return '搜索用户组 / 成员 / 说明'
   if (cur.value === 'clients') return '搜索接入端 / Key / 归属用户'
+  if (cur.value === 'sources') return '搜索数据源 / 主机 / 环境变量'
+  if (cur.value === 'datasets') return '搜索数据集 / 表名 / 数据源'
+  if (cur.value === 'security') return '搜索规则名称 / 字段 / 数据集'
   return '搜索工具名 / 描述，回车跳转'
 })
 const headerKw = computed({
   get() {
     if (cur.value === 'users') return store.userFlt.kw
+    if (cur.value === 'groups') return store.groupFlt.kw
     if (cur.value === 'clients') return store.clientFlt.kw
+    if (cur.value === 'sources') return store.sourceFlt.kw
+    if (cur.value === 'datasets') return store.datasetFlt.kw
+    if (cur.value === 'security') return store.securityFlt.kw
     return search.value
   },
   set(v) {
     if (cur.value === 'users') store.userFlt.kw = v
+    else if (cur.value === 'groups') store.groupFlt.kw = v
     else if (cur.value === 'clients') store.clientFlt.kw = v
+    else if (cur.value === 'sources') store.sourceFlt.kw = v
+    else if (cur.value === 'datasets') store.datasetFlt.kw = v
+    else if (cur.value === 'security') store.securityFlt.kw = v
     else search.value = v
   },
 })
 function onSearch() {
-  if (cur.value === 'users' || cur.value === 'clients') return
+  if (cur.value === 'users' || cur.value === 'groups' || cur.value === 'clients' || cur.value === 'sources' || cur.value === 'datasets' || cur.value === 'security') return
   const kw = search.value.trim()
   store.flt.kw = kw
   store.flt.svc = 'all'
@@ -132,25 +218,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'is-register': shell === 'register' }">
-    <header class="app-topbar">
-      <button v-if="shell !== 'register'" type="button" class="topbar-brand" @click="openConsole">
+  <div class="app-shell" :class="{ 'is-editor': CREATE_IDS.has(cur) }">
+    <header v-show="!CREATE_IDS.has(cur)" class="app-topbar">
+      <button type="button" class="topbar-brand" @click="openHome">
         <McpMark class="mark" />
         <span class="name">MCP 服务管理台</span>
       </button>
-      <div v-else class="topbar-brand static">
-        <McpMark class="mark" />
-        <span class="name">MCP</span>
-      </div>
-      <nav v-if="shell !== 'register'" class="top-tabs">
-        <button type="button" :class="{ on: shell === 'console' }" @click="openConsole">控制台</button>
+      <nav class="top-tabs">
         <button type="button" :class="{ on: shell === 'docs' }" @click="showView('docs')">文档</button>
         <button type="button" :class="{ on: shell === 'sequence' }" @click="showView('sequence')">时序图</button>
       </nav>
-      <div v-else class="reg-top-hint">账号注册</div>
       <div class="header-right">
         <a-input-search
-          v-if="shell === 'console'"
+          v-if="siderOn"
           v-model="headerKw"
           allow-clear
           :placeholder="searchPh"
@@ -158,7 +238,7 @@ onBeforeUnmount(() => {
           @search="onSearch"
           @press-enter="onSearch"
         />
-        <a-dropdown v-if="shell !== 'register'" @select="onUserAction">
+        <a-dropdown @select="onUserAction">
           <a-space class="user-chip" :size="8">
             <a-avatar :size="28" style="background: rgb(var(--primary-6))">数</a-avatar>
             <span class="user-name">数智中心</span>
@@ -171,9 +251,9 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <a-layout class="app-body">
+    <a-layout class="app-body" :class="{ 'arco-layout-has-sider': siderOn }">
       <a-layout-sider
-        v-show="shell === 'console'"
+        v-show="siderOn"
         v-model:collapsed="collapsed"
         :width="220"
         :collapsed-width="64"
@@ -183,35 +263,39 @@ onBeforeUnmount(() => {
         class="app-sider"
       >
         <a-menu
-          :collapsed="collapsed"
-          :selected-keys="[cur]"
+          v-if="!collapsed"
+          :selected-keys="[selectedMenu]"
+          v-model:open-keys="openKeys"
           :auto-open="true"
           @menu-item-click="onMenu"
         >
-          <a-menu-item key="overview">
-            <template #icon><icon-dashboard /></template>概览
-          </a-menu-item>
-          <a-menu-item key="services">
-            <template #icon><icon-storage /></template>MCP 中心
-          </a-menu-item>
-          <a-menu-item key="tools">
-            <template #icon><icon-list /></template>工具目录
-          </a-menu-item>
-          <a-menu-item key="monitor">
-            <template #icon><icon-bar-chart /></template>调用监控
-          </a-menu-item>
-          <a-menu-item key="users">
-            <template #icon><icon-user /></template>用户管理
-          </a-menu-item>
-          <a-menu-item key="clients">
-            <template #icon><icon-safe /></template>接入与密钥
-          </a-menu-item>
-          <a-menu-item key="alerts">
-            <template #icon><icon-notification /></template>
-            告警中心
-            <a-badge v-if="!collapsed && openAlertCount()" :count="openAlertCount()" :max-count="99" class="menu-badge" />
-          </a-menu-item>
+          <a-sub-menu v-for="g in MENU" :key="g.key">
+            <template #icon><component :is="g.icon" /></template>
+            <template #title>{{ g.title }}</template>
+            <a-menu-item v-for="it in g.items" :key="it.key">
+              <template #icon><component :is="it.icon" /></template>
+              {{ it.label }}
+              <a-badge v-if="it.badge && openAlertCount()" :count="openAlertCount()" :max-count="99" class="menu-badge" />
+            </a-menu-item>
+          </a-sub-menu>
         </a-menu>
+        <nav v-else class="sider-rail">
+          <div v-for="g in MENU" :key="g.key" class="rail-group">
+            <div class="rail-cap">{{ g.short }}</div>
+            <a-tooltip v-for="it in g.items" :key="it.key" :content="`${g.title} · ${it.label}`" position="right" mini>
+              <button
+                type="button"
+                class="rail-item"
+                :class="{ on: selectedMenu === it.key }"
+                :aria-label="it.label"
+                @click="onMenu(it.key)"
+              >
+                <component :is="it.icon" />
+                <span v-if="it.badge && openAlertCount()" class="rail-dot" />
+              </button>
+            </a-tooltip>
+          </div>
+        </nav>
         <div class="sider-fold-bar" :class="{ collapsed }">
           <button
             type="button"
@@ -225,10 +309,10 @@ onBeforeUnmount(() => {
         </div>
       </a-layout-sider>
 
-      <a-layout-content class="content-wrap" :class="{ full: shell !== 'console' }">
-        <div class="page-panel" :class="{ flush: shell === 'docs' || shell === 'register', 'reg-flush': shell === 'register' }">
-          <keep-alive exclude="Register">
-            <component :is="views[cur]" @goto="showView" />
+      <a-layout-content class="content-wrap" :class="{ full: !siderOn, create: CREATE_IDS.has(cur) }">
+        <div class="page-panel" :class="{ flush: shell === 'docs' || CREATE_IDS.has(cur) }">
+          <keep-alive exclude="DatasetCreate,DatasetStudio">
+            <component :is="views[cur]" :key="cur" :create-mode="cur === 'dataset-sql' ? 'sql' : 'canvas'" @goto="showView" />
           </keep-alive>
         </div>
       </a-layout-content>

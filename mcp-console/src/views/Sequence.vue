@@ -26,7 +26,7 @@ const PHASES = [
 const ROWS = [
   { kind: 'phase', id: 'p0', t: '阶段零 · 开发提前介入（服务实现 · 服务注册 · 工具注册）' },
   { kind: 'msg', phase: 'p0', no: '1', from: 0, to: 2, dir: 'f', t: '提出数据能力需求', code: '要哪些品种 / 系统 / 工具', goto: 'services' },
-  { kind: 'msg', phase: 'p0', no: '2', from: 2, to: 5, dir: 'f', t: '评审上游边界', code: '哪套库 · 是否跨库 · 只读账号' },
+  { kind: 'msg', phase: 'p0', no: '2', from: 2, to: 5, dir: 'f', t: '评审上游边界', code: '哪套库 · 是否跨库 · 只读账号', goto: 'sources' },
   { kind: 'msg', phase: 'p0', no: '3', from: 5, to: 2, dir: 'r', t: '返回表结构与口径', code: '禁止在 MCP 层重算口径' },
   { kind: 'msg', phase: 'p0', no: '4', from: 2, to: 4, dir: 'f', t: '实现 FastMCP 工具', code: '@mcp.tool · snake_case', goto: 'tools' },
   { kind: 'msg', phase: 'p0', no: '5', from: 2, to: 3, dir: 'f', t: '联系 MCP 服务人员登记服务', code: '名称 · 端点 · 协议 · 上游平台', goto: 'services' },
@@ -36,7 +36,7 @@ const ROWS = [
   { kind: 'msg', phase: 'p0', no: '9', from: 4, to: 3, dir: 'r', t: '返回工具清单', code: 'name + inputSchema', goto: 'tools' },
   { kind: 'phase', id: 'p1', t: '阶段一 · 用户开通与密钥签发' },
   { kind: 'msg', phase: 'p1', no: '10', from: 2, to: 3, dir: 'f', t: '企业微信通讯录选人', code: '内部员工 · userid / 手机 / 邮箱', goto: 'users' },
-  { kind: 'msg', phase: 'p1', no: '11', from: 3, to: 0, dir: 'r', t: '发放客户邀请链接', code: '外部客户 · #register?t=inv-…', goto: 'users' },
+  { kind: 'msg', phase: 'p1', no: '11', from: 3, to: 0, dir: 'r', t: '导入注册外部客户', code: '手机号 + 名称，邮箱选填', goto: 'users' },
   { kind: 'msg', phase: 'p1', no: '12', from: 0, to: 3, dir: 'f', t: '客户填写姓名与手机号', code: '邮箱选填 · 完成后账号为正常', goto: 'users' },
   { kind: 'msg', phase: 'p1', no: '13', from: 2, to: 3, dir: 'f', t: '签发密钥并绑定工具集', code: 'QPS · 日配额 · 到期 · 归属用户', goto: 'clients' },
   { kind: 'msg', phase: 'p1', no: '14', from: 3, to: 5, dir: 'f', t: '写入密钥', code: 'INSERT INTO base_from_mcp_api_key', goto: 'clients' },
@@ -48,7 +48,7 @@ const ROWS = [
   { kind: 'msg', phase: 'p2', no: '19', from: 4, to: 1, dir: 'r', t: 'serverInfo', code: 'futures-metric-mcp · 工具使用说明' },
   { kind: 'msg', phase: 'p2', no: '20', from: 1, to: 4, dir: 'f', t: 'tools/list', code: 'Authorization: Bearer <api_key>', goto: 'clients' },
   { kind: 'msg', phase: 'p2', no: '21', from: 4, to: 5, dir: 'f', t: '校验 Key', code: 'base_from_mcp_api_key', goto: 'clients' },
-  { kind: 'msg', phase: 'p2', no: '22', from: 4, to: 1, dir: 'r', t: '返回已授权工具 Schema', code: '仅工具集内可见', goto: 'tools' },
+  { kind: 'msg', phase: 'p2', no: '22', from: 4, to: 1, dir: 'r', t: '返回可用工具 Schema', code: '仅工具集内可见', goto: 'tools' },
   { kind: 'note', phase: 'p2', lane: 5, t: '鉴权结果', em: '内存缓存 60s', rest: '，避免每次 tools/call 打库' },
   { kind: 'msg', phase: 'p2', no: '✕', from: 4, to: 1, dir: 'err', t: '无 Key / 错 Key → 拒绝', code: '记录 phase=AUTH_FAIL', goto: 'clients' },
   { kind: 'phase', id: 'p3', t: '阶段三 · 数据调用（可跨服务，禁止单工具跨库 JOIN）' },
@@ -56,7 +56,7 @@ const ROWS = [
   { kind: 'msg', phase: 'p3', no: '24', from: 1, to: 4, dir: 'f', t: 'tools/call', code: 'search_source_indexes{source:1, keyword:"螺纹钢"}', goto: 'tools' },
   { kind: 'msg', phase: 'p3', no: '25', from: 4, to: 5, dir: 'f', t: '路由到指标库', code: 'METRIC_DSN · base_from_ths_*' },
   { kind: 'msg', phase: 'p3', no: '26', from: 5, to: 4, dir: 'r', t: '指标与序列', code: 'S012107757 · 3126 元/吨' },
-  { kind: 'msg', phase: 'p3', no: '27', from: 1, to: 4, dir: 'f', t: 'tools/call（另一工具）', code: 'query_warehouse{dataset_id:"dw.ads_variety_pnl_d"}', goto: 'tools' },
+  { kind: 'msg', phase: 'p3', no: '27', from: 1, to: 4, dir: 'f', t: 'tools/call（另一工具）', code: 'query_dataset{dataset_id:"dset-…"}', goto: 'tools' },
   { kind: 'msg', phase: 'p3', no: '28', from: 4, to: 5, dir: 'f', t: '路由到数仓', code: 'DW_DSN · 不 JOIN CRM' },
   { kind: 'note', phase: 'p3', lane: 5, t: '跨平台', em: 'Agent 拼结果', rest: '，MCP 不在一个 SQL 里打两套库' },
   { kind: 'msg', phase: 'p3', no: '29', from: 4, to: 1, dir: 'r', t: '返回结构化结果', code: 'meta + points / rows', goto: 'tools' },
@@ -90,7 +90,7 @@ function laneOn(i) {
 function onMsg(row) {
   if (row.goto) emit('goto', row.goto)
 }
-const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '工具目录', monitor: '调用监控', alerts: '告警中心', users: '用户管理' }
+const GOTO_NAME = { overview: '概览', services: 'MCP 中心', clients: '接入与密钥', tools: '工具目录', monitor: '调用监控', alerts: '告警中心', users: '用户管理', groups: '用户组管理', sources: '数据源', datasets: '数据集', security: '数据权限' }
 </script>
 
 <template>
@@ -98,7 +98,7 @@ const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '
     <div class="page-head">
       <div>
         <h2>时序图</h2>
-        <div class="desc">开发先实现并注册服务/工具；内部员工走企业微信选人开通，外部客户再发邀请链接，然后签发密钥。点击蓝色步骤跳到对应控制台页。</div>
+        <div class="desc">开发先实现并注册服务/工具；管理员注册用户（添加企业用户或导入注册），然后签发密钥。点击蓝色步骤跳到对应控制台页。</div>
       </div>
       <a-button href="/MCP时序信息流.html" target="_blank">
         <template #icon><icon-launch /></template>新窗口
@@ -188,7 +188,7 @@ const GOTO_NAME = { services: 'MCP 中心', clients: '接入与密钥', tools: '
         </a-card>
       </a-col>
       <a-col :xs="24" :md="8" style="margin-bottom: 16px">
-        <a-card title="数据源路由" :bordered="false" hoverable class="stat-card tone-cyan" @click="emit('goto', 'tools')">
+        <a-card title="数据源路由" :bordered="false" hoverable class="stat-card tone-cyan" @click="emit('goto', 'sources')">
           <ul class="seq-ul">
             <li><span class="mono">1</span> 同花顺 / SMM / 钢联 → 指标库 <span class="mono">METRIC_DSN</span></li>
             <li>CRM 工具只打 <span class="mono">CRM_DSN</span>；数仓工具只打 <span class="mono">DW_DSN</span></li>

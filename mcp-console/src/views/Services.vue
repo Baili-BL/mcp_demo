@@ -2,10 +2,10 @@
 import { Message, Modal } from '@arco-design/web-vue'
 import {
   store, showMcpConfig, showToolsetConfig, openPlayground, CALL_MODES,
-  toolsetEndpoint, platformOptions, rememberPlatforms, ensureSvcMeta,
+  toolsetEndpoint, ensureSvcMeta, sourceIdsOfService, setServiceSources,
   toolsOfService, toolsetsUsingService, servicesOfSet, platformsOfSet,
   discoverToolsForService, appendToolsToSet, createToolsetFromService,
-  clientsOfToolset, keyOfToolset, keyForEndpoint,
+  clientsOfToolset, keyOfToolset, keyForEndpoint, gotoIssueKey,
 } from '../store'
 import { fmt, keyExpireMeta, keyStatus } from '../utils'
 import { computed, reactive, ref } from 'vue'
@@ -25,8 +25,11 @@ const keyDrawerVisible = ref(false)
 const keyDrawerSet = ref(null)
 const form = reactive({
   name: '', code: '', proto: 'Streamable HTTP', version: 'v1.0.0',
-  endpoint: '', sources: [], discover: true,
+  endpoint: '', sourceIds: [], discover: true,
 })
+const linkVisible = ref(false)
+const linkSvc = ref(null)
+const linkIds = ref([])
 const setForm = reactive({
   name: 'mcp_toolset_' + Math.random().toString(36).slice(2, 8),
   mode: 'all',
@@ -34,10 +37,8 @@ const setForm = reactive({
 const addKw = ref('')
 const addToolKw = ref('')
 const hubKw = ref('')
-const sourceCustom = ref('')
 const addSvc = ref(store.services[0]?.id || '')
 const picked = ref([])
-const sourceChoices = computed(() => platformOptions())
 
 const addSvcList = computed(() => store.services.filter((s) =>
   !addKw.value || s.name.includes(addKw.value) || s.code.includes(addKw.value)
@@ -82,15 +83,22 @@ function confirmAct(title, content, okMsg) {
   Modal.confirm({ title, content, onOk: () => Message.success(okMsg) })
 }
 function resetSvcForm() {
-  Object.assign(form, { name: '', code: '', proto: 'Streamable HTTP', version: 'v1.0.0', endpoint: '', sources: [], discover: true })
-  sourceCustom.value = ''
+  Object.assign(form, { name: '', code: '', proto: 'Streamable HTTP', version: 'v1.0.0', endpoint: '', sourceIds: [], discover: true })
 }
-function addCustomSource() {
-  const t = sourceCustom.value.trim()
-  if (!t) return
-  if (!form.sources.includes(t)) form.sources = [...form.sources, t]
-  rememberPlatforms([t])
-  sourceCustom.value = ''
+function openLink(svc) {
+  linkSvc.value = svc
+  linkIds.value = sourceIdsOfService(svc)
+  linkVisible.value = true
+}
+function submitLink() {
+  setServiceSources(linkSvc.value, linkIds.value)
+  Message.success(`已更新「${linkSvc.value.name}」关联的数据源`)
+  return true
+}
+function gotoSources() {
+  svcVisible.value = false
+  linkVisible.value = false
+  emit('goto', 'sources')
 }
 function openCreateSvc() {
   resetSvcForm()
@@ -102,16 +110,16 @@ function beforeCreateSvc() {
   if (!/^[a-z][a-z0-9-]*$/.test(code)) { Message.warning('服务标识需为 kebab-case（小写字母/数字/中划线）'); return false }
   if (store.services.some((s) => s.code === code)) { Message.warning(`服务标识 ${code} 已存在`); return false }
   if (!/^https?:\/\/.+/.test(endpoint)) { Message.warning('端点需为 http(s) URL'); return false }
-  rememberPlatforms(form.sources)
   const id = 'svc' + Date.now().toString(36)
   const svc = {
     id, name, code, version: form.version.trim() || 'v1.0.0',
-    proto: form.proto, endpoint, sources: [...form.sources],
+    proto: form.proto, endpoint, sources: [],
     health: 'healthy', inst: '1/1', calls1h: 0, err1h: 0, sla: '100.00%',
   }
   const doDiscover = form.discover
   store.services.push(svc)
   ensureSvcMeta(svc)
+  setServiceSources(svc, form.sourceIds)
   resetSvcForm()
   if (doDiscover) runDiscover(svc)
   else Message.success('服务已登记。可稍后探测 tools/list，或到工具目录手动登记。')
@@ -140,6 +148,10 @@ function openJoin(svc) {
   discSvc.value = svc
   discTools.value = toolsOfService(svc.id)
   if (!discTools.value.length) {
+    if (svc.builtin) {
+      Message.info('还没有数据集工具，请先在「数据集 → 发布工具」发布')
+      return
+    }
     runDiscover(svc)
     return
   }
@@ -171,8 +183,9 @@ function bindNewSet() {
   discVisible.value = false
   joinVisible.value = false
   store.hubTab = 'toolsets'
-  Message.success(`已创建工具集「${ts.name}」，并在接入与密钥中签发绑定 Key`)
-  showToolsetConfig(ts, { fullKey: keyOfToolset(ts), expire: null })
+  Message.success(`已创建工具集「${ts.name}」，请选择归属用户签发密钥`)
+  gotoIssueKey({ toolsetId: ts.id })
+  emit('goto', 'clients')
 }
 function resetSetForm() {
   setForm.name = 'mcp_toolset_' + Math.random().toString(36).slice(2, 8)
@@ -289,7 +302,10 @@ function modeName(id) {
           <template #columns>
             <a-table-column title="名称 / ID" :width="200">
               <template #cell="{ record }">
-                <div style="font-weight:500">{{ record.name }}</div>
+                <div style="font-weight:500">
+                  {{ record.name }}
+                  <a-tag v-if="record.builtin" color="green" size="small" style="margin-left:4px">平台托管</a-tag>
+                </div>
                 <div class="mono" style="font-size:12px;color:var(--color-text-3)">{{ record.code }}</div>
               </template>
             </a-table-column>
@@ -308,7 +324,7 @@ function modeName(id) {
               <template #cell="{ record }">
                 <a-space wrap>
                   <a-tag v-for="x in record.sources" :key="x" color="cyan">{{ x }}</a-tag>
-                  <span v-if="!record.sources.length" class="muted">未标注</span>
+                  <span v-if="!record.sources.length" class="muted">{{ record.builtin ? '随发布的数据集' : '未关联' }}</span>
                 </a-space>
               </template>
             </a-table-column>
@@ -327,12 +343,15 @@ function modeName(id) {
             </a-table-column>
             <a-table-column title="操作" :width="280" :fixed="'right'">
               <template #cell="{ record }">
-                <a-button type="text" size="mini" @click="runDiscover(record)">探测工具</a-button>
+                <a-button v-if="record.builtin" type="text" size="mini" @click="emit('goto', 'datasets')">发布工具</a-button>
+                <a-button v-else type="text" size="mini" @click="runDiscover(record)">探测工具</a-button>
                 <a-button type="text" size="mini" @click="openJoin(record)">加入工具集</a-button>
                 <a-button type="text" size="mini" @click="showMcpConfig(record.id)">调用示例</a-button>
-                <a-dropdown>
+                <a-button v-if="record.builtin" type="text" size="mini" @click="debugSvc(record)">调试</a-button>
+                <a-dropdown v-else>
                   <a-button type="text" size="mini">更多 <icon-down /></a-button>
                   <template #content>
+                    <a-doption @click="openLink(record)">关联数据源</a-doption>
                     <a-doption @click="debugSvc(record)">调试</a-doption>
                     <a-doption @click="confirmAct('重启服务', `确认重启 ${record.name}（${record.code}）？滚动重启不影响在途调用。`, '重启指令已下发（模拟）')">重启</a-doption>
                     <a-doption @click="confirmAct('下线服务', `下线后网关将停止向 ${record.name} 路由流量，确认？`, '已切流并下线（模拟）')">
@@ -431,34 +450,34 @@ function modeName(id) {
         <a-form-item label="MCP 端点 URL" field="endpoint" required>
           <a-input v-model="form.endpoint" placeholder="https://mcp.futures-data.cn/test/mcp" class="mono" />
         </a-form-item>
-        <a-form-item label="所属系统">
-          <a-select
-            v-model="form.sources"
-            multiple
-            allow-clear
-            allow-create
-            allow-search
-            placeholder="勾选已有系统"
-            style="width:100%"
-          >
-            <a-option v-for="p in sourceChoices" :key="p" :value="p">{{ p }}</a-option>
+        <a-form-item label="关联数据源（所属系统）">
+          <a-select v-model="form.sourceIds" multiple allow-clear allow-search placeholder="选择本服务读取的已登记数据源" style="width:100%">
+            <a-option v-for="s in store.sources" :key="s.id" :value="s.id">{{ s.name }}</a-option>
           </a-select>
-        </a-form-item>
-        <a-form-item label="其他">
-          <div class="src-other">
-            <a-input
-              v-model="sourceCustom"
-              allow-clear
-              placeholder="没有合适的，可自己命名，如 OA、风控"
-              @press-enter="addCustomSource"
-            />
-            <a-button type="primary" @click="addCustomSource">添加</a-button>
-          </div>
+          <template #extra>
+            数据源需先在 <a-link @click="gotoSources">数据管理 → 数据源</a-link> 登记；数据源页只读展示此关联。
+          </template>
         </a-form-item>
         <a-form-item>
           <a-checkbox v-model="form.discover">创建后探测 tools/list，把工具挂到本服务（之后才能加入工具集）</a-checkbox>
         </a-form-item>
       </a-form>
+    </a-modal>
+
+    <a-modal
+      v-model:visible="linkVisible"
+      :title="linkSvc ? `关联数据源 — ${linkSvc.name}` : '关联数据源'"
+      :width="520"
+      ok-text="保存"
+      unmount-on-close
+      @before-ok="submitLink"
+    >
+      <a-select v-model="linkIds" multiple allow-clear allow-search placeholder="选择本服务读取的数据源" style="width:100%">
+        <a-option v-for="s in store.sources" :key="s.id" :value="s.id">{{ s.name }}</a-option>
+      </a-select>
+      <p class="muted" style="margin:10px 0 0;font-size:12px">
+        服务与数据源的关联只在这里维护；没有的数据源请先到 <a-link @click="gotoSources">数据源</a-link> 登记。
+      </p>
     </a-modal>
 
     <a-modal v-model:visible="discVisible" :title="discSvc ? `探测工具 — ${discSvc.name}` : '探测工具'" :width="640" :footer="false" unmount-on-close>
@@ -633,16 +652,6 @@ function modeName(id) {
 </template>
 
 <style scoped>
-.src-other {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-.src-other :deep(.arco-input-wrapper) {
-  flex: 1;
-  min-width: 0;
-}
 .key-detail-card { margin-bottom: 16px; }
 .key-detail-card:last-of-type { margin-bottom: 12px; }
 .key-detail-hd {

@@ -70,7 +70,7 @@ const rows = computed(() => {
 function submit() {
   const name = form.name.trim() || '未命名接入端'
   if (!form.userId) { Message.warning('请选择归属用户，先有人再有 Key'); return false }
-  if (!form.toolsetIds.length) { Message.warning('请选择要授权的 MCP 工具集，否则无法调用'); return false }
+  if (!form.toolsetIds.length) { Message.warning('请选择该 Key 可调用的 MCP 工具集，否则无法调用'); return false }
   let expire = null
   if (form.expPreset === 'never') expire = null
   else if (form.expPreset === 'custom') {
@@ -184,9 +184,10 @@ function clearUserFlt() {
 watch(() => store.clientFlt.openIssue, (open) => {
   if (!open) return
   if (store.clientFlt.userId) form.userId = store.clientFlt.userId
+  if (store.clientFlt.toolsetId) form.toolsetIds = [store.clientFlt.toolsetId]
   visible.value = true
   store.clientFlt.openIssue = false
-})
+}, { immediate: true })
 </script>
 
 <template>
@@ -194,7 +195,7 @@ watch(() => store.clientFlt.openIssue, (open) => {
     <div class="page-head">
       <div>
         <h2>接入与密钥</h2>
-        <div class="desc">入站凭证统一在此签发。每把 Key 必须挂到已开通用户，并绑定工具集；配额 / QPS / 到期与工具集配置不再各记一套。</div>
+        <div class="desc">密钥只在此签发：每把 Key 挂到已开通用户并选择可用工具集；配额 / QPS / 到期也在这里管理。其他页面的「签发密钥」都会跳到这里。</div>
       </div>
       <a-button type="primary" @click="openCreate">
         <template #icon><icon-plus /></template>新建密钥
@@ -311,7 +312,7 @@ watch(() => store.clientFlt.openIssue, (open) => {
           <div class="kv">
             <span class="k">①</span><span>创建工具集时签发，或在此新建并绑定工具集</span>
             <span class="k">②</span><span>写入 mcp.json：工具集 url + Authorization Bearer</span>
-            <span class="k">③</span><span>tools/list 仅返回该 Key 已授权工具集中的工具</span>
+            <span class="k">③</span><span>tools/list 仅返回该 Key 可用工具集中的工具</span>
           </div>
         </a-card>
       </a-col>
@@ -359,7 +360,7 @@ watch(() => store.clientFlt.openIssue, (open) => {
             </a-form-item>
           </a-col>
           <a-col :span="24">
-            <a-form-item label="授权工具集" required extra="该 Key 只能调用勾选的工具集端点。可多选；配额与到期在本页统一管理。">
+            <a-form-item label="可用工具集" required extra="该 Key 只能调用勾选的工具集端点。可多选；配额与到期在本页统一管理。">
               <a-select v-model="form.toolsetIds" multiple allow-search placeholder="选择 MCP 工具集">
                 <a-option v-for="ts in store.toolsets" :key="ts.id" :value="ts.id">{{ ts.name }}</a-option>
               </a-select>

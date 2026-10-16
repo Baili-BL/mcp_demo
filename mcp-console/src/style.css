@@ -104,6 +104,32 @@ body {
   color: rgb(11, 11, 15) !important;
   font-weight: 500;
 }
+.app-sider .arco-menu-inline-header,
+.app-sider .arco-menu-pop-header {
+  border-radius: 8px;
+  height: 40px;
+  line-height: 40px;
+  margin: 0 0 4px;
+  padding: 0 12px !important;
+  color: rgb(11, 11, 15) !important;
+  background: transparent !important;
+}
+.app-sider .arco-menu-inline-header:hover,
+.app-sider .arco-menu-pop-header:hover {
+  background: rgb(235, 235, 245) !important;
+}
+.app-sider .arco-menu-inline-header .arco-icon,
+.app-sider .arco-menu-pop-header .arco-icon {
+  color: inherit !important;
+}
+.app-sider .arco-menu-inline .arco-menu-item {
+  padding-left: 36px !important;
+}
+.app-sider.arco-layout-sider-collapsed .arco-menu-inline-header,
+.app-sider.arco-layout-sider-collapsed .arco-menu-pop-header {
+  width: 40px;
+  padding: 0 12px !important;
+}
 .app-sider .arco-menu-item .arco-menu-icon,
 .app-sider .arco-menu-item .arco-icon {
   margin: 0 10px 0 0 !important;
@@ -137,6 +163,56 @@ body {
   border-top: 1px solid rgb(228, 228, 241);
 }
 .menu-badge { margin-left: 8px; vertical-align: middle; }
+.sider-rail {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 40px;
+  scrollbar-width: none;
+}
+.sider-rail::-webkit-scrollbar { display: none; }
+.rail-group + .rail-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgb(228, 228, 241);
+}
+.rail-cap {
+  height: 18px;
+  line-height: 18px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--color-text-3);
+  white-space: nowrap;
+}
+.rail-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 36px;
+  margin: 0 0 2px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(11, 11, 15);
+  font-size: 16px;
+  cursor: pointer;
+}
+.rail-item:hover { background: rgb(235, 235, 245); }
+.rail-item.on {
+  background: rgb(235, 235, 245);
+  color: rgb(var(--primary-6));
+}
+.rail-dot {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--danger-6));
+}
 
 .layout-sider-logo {
   height: 56px;
@@ -218,6 +294,20 @@ body {
   flex: 1;
   min-height: 0;
   height: calc(100vh - 56px);
+  display: flex !important;
+  flex-direction: row !important;
+}
+.app-body > .app-sider {
+  flex: 0 0 auto;
+  height: 100%;
+  align-self: stretch;
+}
+.app-body > .content-wrap {
+  flex: 1;
+  min-width: 0;
+}
+.app-shell.is-editor .app-body {
+  height: 100vh;
 }
 .app-topbar {
   height: 56px;
@@ -301,12 +391,43 @@ body {
 .user-name { font-size: 13px; color: rgb(66, 70, 78); }
 
 .content-wrap {
+  position: relative;
   padding: 0 8px 8px 0;
   overflow: hidden;
   height: 100%;
   min-width: 0;
 }
 .content-wrap.full { padding: 0 8px 8px 8px; }
+.content-wrap.create { padding: 0; }
+.content-wrap.create .page-panel.flush { border-radius: 0; background: #fff; }
+.app-shell.is-editor .content-wrap.create .page-panel.flush { height: 100%; }
+.model-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+.model-overlay .create-page {
+  height: 100%;
+  min-height: 0;
+}
+.join-dialog .arco-btn-primary {
+  background: rgb(86, 82, 255);
+  border-color: rgb(70, 66, 230);
+}
+.join-dialog .arco-btn-primary:hover {
+  background: rgb(100, 96, 255);
+  border-color: rgb(70, 66, 230);
+}
+.flt-dialog .arco-modal-header { display: none; }
+.flt-dialog .arco-modal { border-radius: 4px; overflow: hidden; }
+.mv-drawer-body.arco-drawer-body {
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
 .page-panel.flush {
   padding: 0;
   overflow: hidden;

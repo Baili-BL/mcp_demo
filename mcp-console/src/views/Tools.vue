@@ -2,21 +2,31 @@
 import { computed, reactive, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import G2LineChart from '../components/G2LineChart.vue'
-import { store, SCHEMA_TPL, SECTOR_TAG, openPlayground, tagColor, platformOptions, keyForEndpoint } from '../store'
+import {
+  store, SCHEMA_TPL, SECTOR_TAG, openPlayground, tagColor, keyForEndpoint,
+} from '../store'
 import { fmt, srColor } from '../utils'
 
+const emit = defineEmits(['goto'])
 const toolVisible = ref(false)
 const drawerVisible = ref(false)
+const dataFlt = ref('all')
 const current = ref(null)
+const upstreamServices = computed(() => store.services.filter((s) => !s.builtin))
 const form = reactive({
-  name: '', cn: '', svc: store.services[0]?.id, sector: '', version: 'v1.0.0', on: true, desc: '', schema: SCHEMA_TPL,
+  name: '', cn: '', svc: upstreamServices.value[0]?.id, sector: '', version: 'v1.0.0', on: true, desc: '', schema: SCHEMA_TPL,
 })
+
 const tagOpts = computed(() => {
   const set = new Set(Object.keys(SECTOR_TAG))
   store.tools.forEach((t) => { if (t.sector) set.add(t.sector) })
   return [...set]
 })
-const platformOpts = computed(() => platformOptions())
+const platformOpts = computed(() => {
+  const set = new Set()
+  store.services.forEach((s) => (s.sources || []).forEach((x) => { if (x) set.add(x) }))
+  return [...set]
+})
 
 const filtered = computed(() => store.tools.filter((t) => {
   if (store.flt.svc !== 'all' && t.svc !== store.flt.svc) return false
@@ -25,16 +35,41 @@ const filtered = computed(() => store.tools.filter((t) => {
     const src = store.services.find((s) => s.id === t.svc)?.sources || []
     if (!src.includes(store.flt.platform)) return false
   }
+  if (dataFlt.value === 'bound' && !t.dataset?.datasetId) return false
+  if (dataFlt.value === 'view' && t.dataset?.objectType !== 'view') return false
+  if (dataFlt.value === 'table' && t.dataset?.objectType !== 'table' && t.dataset?.objectType !== 'sql') return false
   const kw = store.flt.kw
-  if (kw && !t.name.includes(kw) && !t.cn.includes(kw) && !t.desc.includes(kw)) return false
+  if (kw && !t.name.includes(kw) && !t.cn.includes(kw) && !t.desc.includes(kw) && !(t.dataset?.objectName || '').includes(kw)) return false
   return true
 }))
 
+function kindTag(t) {
+  const k = t?.dataset?.objectType
+  if (k === 'view') return { color: 'purple', text: '视图' }
+  if (k === 'sql') return { color: 'cyan', text: 'SQL' }
+  if (k) return { color: 'arcoblue', text: '表' }
+  return null
+}
 function toggle(t) {
   t.on = !t.on
   Message[t.on ? 'success' : 'warning'](`工具 ${t.name} 已${t.on ? '启用' : '停用'}（模拟）`)
 }
 function openDrawer(t) { current.value = t; drawerVisible.value = true }
+function gotoPerm(t) {
+  drawerVisible.value = false
+  store.securityFlt.kw = t?.dataset?.displayName || ''
+  emit('goto', 'security')
+}
+function openDataset(t) {
+  if (!t?.dataset?.datasetId) return
+  drawerVisible.value = false
+  const ds = store.datasets.find((d) => d.id === t.dataset.datasetId)
+  if (ds) {
+    store.datasetFlt.sourceId = ds.data_source_id
+    store.studioDatasetId = ds.id
+  }
+  emit('goto', 'datasets')
+}
 function debugTool(t) {
   const svc = store.services.find((s) => s.id === t.svc)
   openPlayground({
@@ -66,20 +101,39 @@ function series30(seed) {
   })
 }
 
+function openRegister() {
+  form.name = ''
+  form.cn = ''
+  form.svc = upstreamServices.value[0]?.id
+  form.sector = ''
+  form.version = 'v1.0.0'
+  form.on = true
+  form.desc = ''
+  form.schema = SCHEMA_TPL
+  toolVisible.value = true
+}
+
 function submitTool() {
   const name = form.name.trim(), cn = form.cn.trim()
-  if (!/^[a-z][a-z0-9_]*$/.test(name)) { Message.warning('工具名称需为 snake_case（小写字母/数字/下划线）'); return }
-  if (store.tools.some((t) => t.name === name)) { Message.warning(`工具 ${name} 已存在`); return }
-  if (!cn) { Message.warning('请填写中文名称'); return }
+  if (!/^[a-z][a-z0-9_]*$/.test(name)) { Message.warning('工具名称需为 snake_case（小写字母/数字/下划线）'); return false }
+  if (store.tools.some((t) => t.name === name)) { Message.warning(`工具 ${name} 已存在`); return false }
+  if (!cn) { Message.warning('请填写中文名称'); return false }
+  if (!form.svc) { Message.warning('请选择所属服务'); return false }
   let schema
-  try { schema = JSON.parse(form.schema) } catch { Message.warning('inputSchema 不是合法 JSON，请检查'); return }
+  try { schema = JSON.parse(form.schema) } catch { Message.warning('inputSchema 不是合法 JSON，请检查'); return false }
   store.tools.push({
     name, cn, svc: form.svc, sector: form.sector || '', version: form.version.trim() || 'v1.0.0',
-    desc: form.desc.trim() || '（暂无描述）', schema, calls: 0, sr: 100, lat: 0, on: form.on,
+    desc: form.desc.trim() || '（暂无描述）', schema,
+    calls: 0, sr: 100, lat: 0, on: form.on,
     week: [0, 0, 0, 0, 0, 0, 0], errs: [{ t: '—', code: '—', msg: '暂无错误记录' }],
   })
   toolVisible.value = false
   Message.success(`工具 ${name} 注册成功，已加入${store.svcMeta[form.svc].n}`)
+  return true
+}
+function gotoDatasets() {
+  toolVisible.value = false
+  emit('goto', 'datasets')
 }
 </script>
 
@@ -88,9 +142,9 @@ function submitTool() {
     <div class="page-head">
       <div>
         <h2>工具目录</h2>
-        <div class="desc">全部已登记 MCP 工具。工具属于某个服务；所属系统来自服务标签，可扩展（行情平台、CRM、数仓等）。</div>
+        <div class="desc">全部已登记 MCP 工具（只读汇总）。上游服务工具由「MCP 中心」探测或在此注册；数据集工具在「数据集 → 发布工具」生成，行列权限统一在「数据权限」配置。</div>
       </div>
-      <a-button type="primary" @click="toolVisible = true">
+      <a-button type="primary" @click="openRegister">
         <template #icon><icon-plus /></template>注册工具
       </a-button>
     </div>
@@ -109,7 +163,13 @@ function submitTool() {
             <a-option value="all">标签：全部</a-option>
             <a-option v-for="k in tagOpts" :key="k" :value="k">{{ k }}</a-option>
           </a-select>
-          <a-input-search v-model="store.flt.kw" allow-clear placeholder="搜索工具名 / 描述" :style="{ width: '260px' }" />
+          <a-select v-model="dataFlt" :style="{ width: '160px' }">
+            <a-option value="all">来源：全部</a-option>
+            <a-option value="bound">数据集工具</a-option>
+            <a-option value="view">数据视图</a-option>
+            <a-option value="table">数据表</a-option>
+          </a-select>
+          <a-input-search v-model="store.flt.kw" allow-clear placeholder="搜索工具名 / 描述 / 表名" :style="{ width: '260px' }" />
         </a-space>
         <span class="muted">共 {{ filtered.length }} 个工具 · 点击行查看详情</span>
       </div>
@@ -128,6 +188,10 @@ function submitTool() {
             <template #cell="{ record }">
               <div class="mono tool-name">{{ record.name }}</div>
               <div class="muted">{{ record.cn }} — {{ record.desc }}</div>
+              <div v-if="record.dataset" class="muted">
+                <a-tag v-if="kindTag(record)" :color="kindTag(record).color" size="small" style="margin-right: 4px">{{ kindTag(record).text }}</a-tag>
+                {{ record.dataset.sourceName }} · {{ record.dataset.objectName }}
+              </div>
             </template>
           </a-table-column>
           <a-table-column title="所属服务" :width="140">
@@ -185,7 +249,22 @@ function submitTool() {
           </a-descriptions-item>
           <a-descriptions-item label="版本"><a-tag color="arcoblue">{{ current.version }}</a-tag></a-descriptions-item>
           <a-descriptions-item label="调用方式"><span class="mono" style="font-size:12px">tools/call → {{ current.name }}</span></a-descriptions-item>
+          <a-descriptions-item v-if="current.dataset" label="来源数据集">
+            <a-tag v-if="kindTag(current)" :color="kindTag(current).color" size="small">{{ kindTag(current).text }}</a-tag>
+            <span class="mono" style="margin-left: 6px">{{ current.dataset.displayName || current.dataset.objectName }}</span>
+          </a-descriptions-item>
+          <a-descriptions-item v-if="current.dataset" label="数据源">{{ current.dataset.sourceName }}</a-descriptions-item>
+          <a-descriptions-item v-if="current.dataset" label="查询参数">
+            <span class="mono">{{ (current.dataset.filterFields || Object.keys(current.schema?.properties || {}).filter((k) => k !== 'limit')).join(', ') || '—' }}</span>
+          </a-descriptions-item>
+          <a-descriptions-item v-if="current.dataset" label="行列权限">
+            <span class="muted">按调用人所在用户组实时生效，在「数据权限」统一配置</span>
+          </a-descriptions-item>
         </a-descriptions>
+        <a-space v-if="current.dataset" style="margin-top: 12px">
+          <a-button size="small" type="primary" @click="openDataset(current)">打开数据集（修改 / 重新发布）</a-button>
+          <a-button size="small" type="outline" @click="gotoPerm(current)">去数据权限</a-button>
+        </a-space>
         <a-typography-title :heading="6" style="margin-top:20px">输入参数 Schema（inputSchema）</a-typography-title>
         <pre class="schema-pre">{{ JSON.stringify(current.schema, null, 2) }}</pre>
         <a-typography-title :heading="6" style="margin-top:20px">近 30 天调用量</a-typography-title>
@@ -207,7 +286,11 @@ function submitTool() {
       </template>
     </a-drawer>
 
-    <a-modal v-model:visible="toolVisible" title="注册新工具" :width="580" @ok="submitTool" :ok-text="'注册'" unmount-on-close>
+    <a-modal v-model:visible="toolVisible" title="注册上游服务工具" :width="760" :on-before-ok="submitTool" :ok-text="'注册'" unmount-on-close>
+      <a-alert style="margin-bottom: 16px">
+        这里登记上游 MCP 服务已实现的工具。要把数据表 / 视图开放成工具，请到
+        <a-link @click="gotoDatasets">数据集 → 发布工具</a-link>。
+      </a-alert>
       <a-form :model="form" layout="vertical">
         <a-row :gutter="16">
           <a-col :span="12"><a-form-item label="工具名称（snake_case）" required><a-input v-model="form.name" placeholder="get_warehouse_receipt" /></a-form-item></a-col>
@@ -215,7 +298,7 @@ function submitTool() {
           <a-col :span="12">
             <a-form-item label="所属服务" required>
               <a-select v-model="form.svc">
-                <a-option v-for="s in store.services" :key="s.id" :value="s.id">{{ s.name }}（{{ s.code }}）</a-option>
+                <a-option v-for="s in upstreamServices" :key="s.id" :value="s.id">{{ s.name }}（{{ s.code }}）</a-option>
               </a-select>
             </a-form-item>
           </a-col>

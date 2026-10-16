@@ -1,7 +1,10 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { store, toolsetEndpoint, findServiceByEndpoint, discoverToolsForService, keyForEndpoint } from '../store'
+import {
+  store, toolsetEndpoint, findServiceByEndpoint, discoverToolsForService, keyForEndpoint,
+  listAuthorizedDatasets, queryDatasetWithGrant,
+} from '../store'
 
 const visible = computed({
   get: () => store.playground.visible,
@@ -322,25 +325,27 @@ function mockPayload(t, params) {
     }
   }
   if (t.name === 'list_datasets') {
-    const src = params.source && params.source !== 'all' ? params.source : null
-    const all = [
-      { dataset_id: 'crm.account', source: 'crm', name: '客户主数据', rows: 12840 },
-      { dataset_id: 'crm.opportunity', source: 'crm', name: '商机漏斗', rows: 3622 },
-      { dataset_id: 'dw.ads_variety_pnl_d', source: 'warehouse', name: '品种日盈亏', rows: 890112 },
-      { dataset_id: 'dw.dwd_crm_touch_d', source: 'warehouse', name: '客户触达明细', rows: 210445 },
-    ]
-    return { datasets: src ? all.filter((d) => d.source === src) : all, keyword: params.keyword || '' }
+    const datasets = listAuthorizedDatasets(store, { keyword: params.keyword })
+    return { count: datasets.length, datasets, keyword: params.keyword || '' }
   }
-  if (t.name === 'query_warehouse') {
-    return {
-      dataset_id: params.dataset_id || 'dw.ads_variety_pnl_d',
-      limit: params.limit || 500,
-      columns: ['dt', 'variety', 'pnl', 'volume'],
-      preview: [
-        { dt: '2026-09-17', variety: 'CU', pnl: 128.4, volume: 32011 },
-        { dt: '2026-09-17', variety: 'RB', pnl: -36.2, volume: 88120 },
-      ],
-    }
+  if (t.name === 'query_dataset' || t.name === 'query_warehouse') {
+    const datasetId = params.dataset_id || store.datasets[0]?.id
+    const out = queryDatasetWithGrant(store, {
+      dataset_id: datasetId,
+      limit: params.limit || 100,
+      ...params,
+    })
+    if (out.error) return { ok: false, error: out.error }
+    return out
+  }
+  if (t.dataset?.datasetId) {
+    const out = queryDatasetWithGrant(store, {
+      dataset_id: t.dataset.datasetId,
+      limit: params.limit || 100,
+      ...params,
+    })
+    if (out.error) return { ok: false, error: out.error }
+    return { tool: t.name, ...out }
   }
   if (t.name === 'search_crm_accounts') {
     return {
