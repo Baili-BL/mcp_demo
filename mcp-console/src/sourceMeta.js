@@ -181,7 +181,7 @@ const GRANT_PRESET = {
   'src-edb': {
     'edb_info': { hidden: [], row_filter: '' },
     'edb_series_data': { hidden: [], row_filter: '' },
-    'v_edb_series_pub': { hidden: [], row_filter: "data_time >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)" },
+    'v_edb_series_pub': { hidden: [], row_filter: "data_time >= '2024-10-01'" },
   },
   'src-crm': {
     'crm_account': { hidden: ['phone'], row_filter: '' },
@@ -920,13 +920,14 @@ function condToSql(c, user) {
     return `(${col} >= '${escSql(val)}' AND ${col} <= '${escSql(b)}')`
   }
   if (!val) return ''
-  if (op === '!=') return `${col} <> '${escSql(val)}'`
+  const lit = /^-?\d+(\.\d+)?$/.test(val) ? val : `'${escSql(val)}'`
+  if (op === '!=') return `${col} <> ${lit}`
   if (op === 'contains') return `${col} LIKE '%${escSql(val)}%'`
   if (op === 'not_contains') return `${col} NOT LIKE '%${escSql(val)}%'`
   if (op === 'starts') return `${col} LIKE '${escSql(val)}%'`
   if (op === 'ends') return `${col} LIKE '%${escSql(val)}'`
-  if (['>', '>=', '<', '<='].includes(op)) return `${col} ${op} '${escSql(val)}'`
-  return `${col} = '${escSql(val)}'`
+  if (['>', '>=', '<', '<='].includes(op)) return `${col} ${op} ${lit}`
+  return `${col} = ${lit}`
 }
 
 function userHitsGroups(user, groupKeys) {
@@ -1013,10 +1014,48 @@ export function flattenPoliciesToRules(policies) {
   return rules
 }
 
+function parseSqlFilter(sql) {
+  const text = String(sql || '').trim()
+  if (!text) return null
+  const conds = []
+  for (const raw of text.split(/\s+AND\s+/i)) {
+    const m = raw.trim().replace(/^\((.*)\)$/, '$1').trim()
+      .match(/^([A-Za-z_][\w.]*)\s*(>=|<=|<>|!=|=|>|<)\s*(?:'((?:[^']|'')*)'|(-?\d+(?:\.\d+)?))$/)
+    if (!m) return null
+    conds.push({ column: m[1], op: m[2] === '<>' ? '!=' : m[2], value: m[3] !== undefined ? m[3].replace(/''/g, "'") : m[4] })
+  }
+  return conds
+}
+
 export function hydrateRowPolicies(grant) {
   if ((grant?.row_policies || []).length) return grant.row_policies.map((p) => ({ ...p }))
   const rules = (grant?.row_rules || []).filter((r) => r.column && String(r.value || '').trim())
-  if (!rules.length) return []
+  if (!rules.length) {
+    const conds = parseSqlFilter(grant?.row_filter_def ?? grant?.row_filter)
+    if (!conds) return []
+    return [{
+      id: 'sql-0',
+      name: '规则1',
+      subject: 'all',
+      users: [],
+      groups: [],
+      on: true,
+      blocks: [{
+        id: 'sql-b-0',
+        join: 'and',
+        conditions: conds.map((c, i) => ({
+          id: `sql-c-${i}`,
+          column: c.column,
+          method: 'condition',
+          op: c.op,
+          values: [],
+          value: c.value,
+          value2: '',
+          tagKey: 'team',
+        })),
+      }],
+    }]
+  }
   return rules.map((r, i) => ({
     id: `legacy-${i}`,
     name: r.name || `规则${i + 1}`,

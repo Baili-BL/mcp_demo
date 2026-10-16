@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onDeactivated, ref } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
-import { store, USER_ROLES, kindMeta, WECOM_DEPTS, WECOM_MEMBERS, wecomMemberStatus, importStaffFromWecom, registerUsers, PHONE_RE, EMAIL_RE, gotoIssueKey } from '../store'
+import { store, USER_ROLES, kindMeta, WECOM_DEPTS, WECOM_MEMBERS, wecomMemberStatus, importStaffFromWecom, registerUsers, PHONE_RE, EMAIL_RE, gotoIssueKey, removeUser } from '../store'
 import { buildUserImportXlsx, buildUserExportXlsx, parseUserImportFile, downloadBlob } from '../excel'
 
 const emit = defineEmits(['goto'])
@@ -215,6 +215,29 @@ function disable(u) {
     },
   })
 }
+function enable(u) {
+  const t = store.users.find((x) => x.id === u.id)
+  if (!t) return
+  t.status = '正常'
+  Message.success(`${t.name} 已重新启用`)
+}
+function remove(u) {
+  if (u.status !== '停用') {
+    Message.warning('请先停用该账号，再删除')
+    return
+  }
+  const keys = store.clients.filter((c) => c.userId === u.id).length
+  Modal.confirm({
+    title: '删除用户',
+    content: `删除 ${u.name} 后不可恢复：${keys ? `其名下 ${keys} 个 API Key 将一并删除，` : ''}并移出所有用户组和数据权限规则。`,
+    okText: '删除',
+    okButtonProps: { status: 'danger' },
+    onOk: () => {
+      const r = removeUser(u.id)
+      if (r.ok) Message.success(`已删除用户 ${u.name}`)
+    },
+  })
+}
 onDeactivated(() => {
   regVisible.value = false
 })
@@ -299,6 +322,10 @@ onDeactivated(() => {
               <a-button v-if="record.status === '待审批'" type="text" size="mini" @click="approve(record)">通过</a-button>
               <a-button v-if="record.status === '正常'" type="text" size="mini" @click="gotoIssue(record)">去签发</a-button>
               <a-button v-if="record.status !== '停用'" type="text" status="danger" size="mini" @click="disable(record)">停用</a-button>
+              <a-button v-else type="text" size="mini" @click="enable(record)">启用</a-button>
+              <a-tooltip :content="record.status === '停用' ? '' : '停用后才可删除'" :disabled="record.status === '停用'">
+                <a-button type="text" status="danger" size="mini" :disabled="record.status !== '停用'" @click="remove(record)">删除</a-button>
+              </a-tooltip>
             </template>
           </a-table-column>
         </template>

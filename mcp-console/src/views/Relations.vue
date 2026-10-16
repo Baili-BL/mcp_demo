@@ -416,7 +416,7 @@ function jump(n) {
     <div class="page-head">
       <div>
         <h2>关系树</h2>
-        <div class="desc">从服务、用户、数据集三个方向速查调用链路。橙色表示这条链路上的行列权限不生效，可在右侧直接修复。</div>
+        <div class="desc">从服务、用户或数据集任一端出发，快速定位数据流经的完整链路。标橙的链路行列权限未生效，可在右侧一键修复。</div>
       </div>
     </div>
 

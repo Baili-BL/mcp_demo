@@ -309,6 +309,23 @@ export function removeUserGroup(id) {
   store.userGroups.splice(i, 1)
   return true
 }
+export function removeUser(id) {
+  const i = store.users.findIndex((u) => u.id === id)
+  if (i < 0 || store.users[i].status !== '停用') return { ok: false }
+  const keys = store.clients.filter((c) => c.userId === id).length
+  store.clients = store.clients.filter((c) => c.userId !== id)
+  store.userGroups.forEach((g) => { g.memberIds = (g.memberIds || []).filter((m) => m !== id) })
+  const drop = (arr) => (arr || []).filter((x) => x !== id)
+  store.datasetGrants.forEach((g) => {
+    g.row_whitelist = drop(g.row_whitelist)
+    g.col_whitelist = drop(g.col_whitelist)
+    ;(g.row_policies || []).forEach((p) => { p.users = drop(p.users) })
+    ;(g.col_policies || []).forEach((p) => { p.users = drop(p.users) })
+    ;(g.columns || []).forEach((c) => { c.users = drop(c.users) })
+  })
+  store.users.splice(i, 1)
+  return { ok: true, keys }
+}
 
 export const WECOM_DEPTS = ['数智中心', '有色组', '能化组', '数据分析', '黑色组']
 export const WECOM_MEMBERS = [
