@@ -3,10 +3,10 @@ import {
   hydrateSources, hydrateDatasets, hydrateDatasetFolders, isDbKind, attachSampleCatalog,
   publishDatasetTool, publishVibeDatasetTool, DATASET_SVC_ID, datasetKind, datasetKindLabel,
   testSourceConnection, syncSchema, previewDataset, previewSql,
-  updateColumn, saveDatasetGrant, compileRowFilter, compileGrantRowFilter, hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, describeColSubject, isMeasureColumn, findGrant, getOrCreateGrant, findDataset, columnsForUser, ruleAppliesToUser,
-  toolsOfDataset, syncBoundTools, queryDatasetWithGrant, listAuthorizedDatasets,
+  updateColumn, saveDatasetGrant, compileRowFilter, compileGrantRowFilter, hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, colPolicyColumns, describeColSubject, isMeasureColumn, findGrant, getOrCreateGrant, findDataset, columnsForUser, ruleAppliesToUser,
+  toolsOfDataset, readerToolsOfDataset, linkedToolsOfDataset, syncBoundTools, queryDatasetWithGrant, listAuthorizedDatasets,
   draftFromCatalog, saveObjectGrant, createModeledDataset, createSqlDataset, updateModeledDataset, updateSqlDataset, compileModelSql,
-  ROOT_FOLDER_ID, folderPath, folderCrumbs, folderChildren, flattenFolders, findFolder,
+  ROOT_FOLDER_ID, folderPath, folderCrumbs, folderChildren, flattenFolders, findFolder, stampNow,
 } from './sourceMeta'
 
 export {
@@ -15,8 +15,8 @@ export {
   createModeledDataset, createSqlDataset, updateModeledDataset, updateSqlDataset, compileModelSql,
   publishDatasetTool, publishVibeDatasetTool, DATASET_SVC_ID, datasetKind, datasetKindLabel,
   testSourceConnection, syncSchema, previewDataset, previewSql,
-  updateColumn, saveDatasetGrant, compileRowFilter, compileGrantRowFilter, hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, describeColSubject, isMeasureColumn, findGrant, getOrCreateGrant, findDataset, columnsForUser, ruleAppliesToUser,
-  toolsOfDataset, syncBoundTools, queryDatasetWithGrant, listAuthorizedDatasets,
+  updateColumn, saveDatasetGrant, compileRowFilter, compileGrantRowFilter, hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, colPolicyColumns, describeColSubject, isMeasureColumn, findGrant, getOrCreateGrant, findDataset, columnsForUser, ruleAppliesToUser,
+  toolsOfDataset, readerToolsOfDataset, linkedToolsOfDataset, syncBoundTools, queryDatasetWithGrant, listAuthorizedDatasets,
   draftFromCatalog, saveObjectGrant,
 }
 
@@ -75,10 +75,10 @@ const trend0 = genTrend()
 
 export const store = reactive({
   services: [
-    { id: 'mkt', name: '品种行情服务', code: 'futures-market-mcp', version: 'v1.3.2', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/market/mcp', sources: ['同花顺', 'EDB 指标库'], health: 'healthy', inst: '3/3', calls1h: 1832, err1h: 2, sla: '99.98%' },
+    { id: 'mkt', name: '品种行情服务', code: 'futures-market-mcp', version: 'v1.3.2', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/market/mcp', passIdentity: true, sources: ['同花顺', 'EDB 指标库'], health: 'healthy', inst: '3/3', calls1h: 1832, err1h: 2, sla: '99.98%' },
     { id: 'fund', name: '产业基本面服务', code: 'futures-fundamental-mcp', version: 'v1.1.0', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/fundamental/mcp', sources: ['SMM', '上海钢联', '手工录入', '海关开放接口'], health: 'healthy', inst: '2/2', calls1h: 964, err1h: 5, sla: '99.92%' },
     { id: 'res', name: '研报知识服务', code: 'research-knowledge-mcp', version: 'v0.9.4', proto: 'SSE', endpoint: 'https://mcp.futures-data.cn/research/sse', sources: [], health: 'degraded', inst: '2/3', calls1h: 417, err1h: 21, sla: '99.61%' },
-    { id: 'anl', name: '数据分析服务', code: 'data-analytics-mcp', version: 'v0.8.1', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/analytics/mcp', sources: ['CRM 系统', '数仓'], health: 'healthy', inst: '2/2', calls1h: 538, err1h: 3, sla: '99.88%' },
+    { id: 'anl', name: '数据分析服务', code: 'data-analytics-mcp', version: 'v0.8.1', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/analytics/mcp', passIdentity: true, sources: ['CRM 系统', '数仓'], health: 'healthy', inst: '2/2', calls1h: 538, err1h: 3, sla: '99.88%' },
     { id: 'dsx', name: '数据集服务', code: 'dataset-hub-mcp', version: 'v1.0.0', proto: 'Streamable HTTP', endpoint: 'https://mcp.futures-data.cn/datasets/mcp', sources: [], builtin: true, health: 'healthy', inst: '2/2', calls1h: 0, err1h: 0, sla: '99.99%' },
   ],
   svcMeta: {
@@ -209,6 +209,7 @@ export const store = reactive({
   datasets: [],
   datasetFolders: [],
   datasetGrants: [],
+  readRequests: [],
   datasetFlt: { kw: '', sourceId: '', type: 'all' },
   securityFlt: { kw: '' },
   studioDatasetId: '',
@@ -494,6 +495,41 @@ export function keyForEndpoint(endpoint) {
 hydrateSources(store.sources)
 hydrateDatasetFolders(store)
 hydrateDatasets(store)
+
+const dsId = (src, kind, name) => `dset-${src}-${kind}-${name}`
+const SEED_READS = {
+  get_spot_price: [dsId('src-ths', 'view', 'v_ths_index_live')],
+  get_futures_quote: [dsId('src-ths', 'table', 'base_from_ths_data')],
+  get_basis: [dsId('src-edb', 'view', 'v_edb_series_pub')],
+  get_term_structure: [dsId('src-ths', 'table', 'base_from_ths_data')],
+  get_inventory: [dsId('src-ora-risk', 'view', 'V_WH_RECEIPT_OPEN')],
+  get_production_profit: [dsId('src-ms', 'view', 'v_mysteel_chemical_live')],
+  get_operating_rate: [dsId('src-ms', 'table', 'base_from_mysteel_chemical_index')],
+  get_capacity: [dsId('src-smm', 'table', 'base_from_smm_index')],
+  search_crm_accounts: [dsId('src-crm', 'view', 'v_crm_account_open')],
+  get_crm_pipeline: [dsId('src-crm', 'table', 'crm_account')],
+  run_stat_analysis: [dsId('src-dw', 'table', 'ads_variety_pnl_d')],
+}
+store.tools.forEach((t) => {
+  const ids = (SEED_READS[t.name] || []).filter((id) => store.datasets.some((d) => d.id === id))
+  if (ids.length) t.reads = ids
+})
+;[
+  dsId('src-ths', 'view', 'v_ths_index_live'),
+  dsId('src-ths', 'table', 'base_from_ths_data'),
+  dsId('src-edb', 'view', 'v_edb_series_pub'),
+  dsId('src-ora-risk', 'view', 'V_WH_RECEIPT_OPEN'),
+  dsId('src-crm', 'view', 'v_crm_account_open'),
+].forEach((id) => {
+  const ds = store.datasets.find((d) => d.id === id)
+  if (ds) ds.sec_view = { name: secViewName(ds), createdAt: '2026-10-12 10:20:00', syncedAt: '2026-10-15 13:20:00' }
+})
+;[
+  { tool: 'run_stat_analysis', datasetId: dsId('src-dw', 'view', 'v_ads_variety_pnl_pub'), requestedAt: '2026-10-16 09:40:12', requestedBy: '林舟' },
+  { tool: 'get_basis', datasetId: dsId('src-edb', 'table', 'edb_series_data'), requestedAt: '2026-10-16 11:05:47', requestedBy: '林舟' },
+].forEach((r, i) => {
+  if (store.datasets.some((d) => d.id === r.datasetId)) store.readRequests.push({ id: `rr-seed-${i}`, status: 'pending', reason: '', decidedAt: '', ...r })
+})
 syncServiceSources()
 
 export const SOURCE_KINDS = [
@@ -569,25 +605,11 @@ export const VENDOR_LABELS = {
   aws: 'AWS',
   self: '自建',
 }
-export const ALIYUN_REGIONS = [
-  { value: 'cn-hangzhou', label: '华东1（杭州）' },
-  { value: 'cn-shanghai', label: '华东2（上海）' },
-  { value: 'cn-beijing', label: '华北2（北京）' },
-  { value: 'cn-shenzhen', label: '华南1（深圳）' },
-  { value: 'cn-zhangjiakou', label: '华北3（张家口）' },
-  { value: 'cn-hongkong', label: '中国香港' },
-]
-export const DEMO_RDS_INSTANCES = [
-  { id: 'rm-metric', name: '指标库 RDS', host: 'rm-metric.mysql.rds.aliyuncs.com', port: 3306, region: 'cn-hangzhou', version: '5.7' },
-  { id: 'rm-crm', name: 'CRM RDS', host: 'rm-crm.mysql.rds.aliyuncs.com', port: 3306, region: 'cn-hangzhou', version: '8.0' },
-  { id: 'rm-dw', name: '数仓 RDS', host: 'rm-dw.mysql.rds.aliyuncs.com', port: 3306, region: 'cn-shanghai', version: '8.0' },
-]
 export const MCP_WHITELIST = {
   public: ['47.96.81.16/28', '47.98.220.32/28', '121.41.68.48/28'],
-  vpc: ['100.104.0.0/16'],
 }
 export function whitelistText() {
-  return `公网：${MCP_WHITELIST.public.join('、')}\nVPC：${MCP_WHITELIST.vpc.join('、')}`
+  return MCP_WHITELIST.public.join('、')
 }
 export function inferConnector(src) {
   if (!src) return CONNECTORS.find((c) => c.id === 'self-mysql')
@@ -596,9 +618,6 @@ export function inferConnector(src) {
     if (hit) return hit
   }
   if (src.kind === 'http') return CONNECTORS.find((c) => c.id === 'http')
-  if (src.kind === 'mysql' && String(src.host || '').includes('rds.aliyuncs.com')) {
-    return CONNECTORS.find((c) => c.id === 'aliyun-rds-mysql')
-  }
   return CONNECTORS.find((c) => c.type === src.kind && c.vendor === 'self')
     || CONNECTORS.find((c) => c.type === src.kind)
     || CONNECTORS.find((c) => c.id === 'self-mysql')
@@ -644,6 +663,142 @@ export function setServiceSources(svc, sourceIds) {
     src.svcIds = [...ids]
   })
   syncServiceSources()
+}
+function linkSourceForRead(tool, datasetId) {
+  const svc = store.services.find((s) => s.id === tool.svc)
+  const ds = store.datasets.find((d) => d.id === datasetId)
+  const src = store.sources.find((s) => s.id === ds?.data_source_id)
+  if (!svc || svc.builtin || !src || (src.svcIds || []).includes(svc.id)) return ''
+  src.svcIds = [...(src.svcIds || []), svc.id]
+  syncServiceSources()
+  return src.name
+}
+export function readRequestsOf({ tool, datasetId, status } = {}) {
+  return store.readRequests.filter((r) =>
+    (!tool || r.tool === tool) && (!datasetId || r.datasetId === datasetId) && (!status || r.status === status))
+}
+/** 工具侧提交读取申请：新增的数据集进入待授权，取消勾选的撤回申请或放弃已授权的读取。 */
+export function requestToolReads(tool, datasetIds, requestedBy = '陈可') {
+  if (!tool || tool.dataset) return { requested: 0, withdrawn: 0 }
+  const want = new Set((datasetIds || []).filter((id) => store.datasets.some((d) => d.id === id)))
+  const before = (tool.reads || []).length
+  tool.reads = (tool.reads || []).filter((id) => want.has(id))
+  let withdrawn = before - tool.reads.length
+  store.readRequests = store.readRequests.filter((r) => {
+    if (r.tool !== tool.name || r.status !== 'pending' || want.has(r.datasetId)) return true
+    withdrawn += 1
+    return false
+  })
+  let requested = 0
+  want.forEach((id) => {
+    if (tool.reads.includes(id) || readRequestsOf({ tool: tool.name, datasetId: id, status: 'pending' }).length) return
+    store.readRequests = store.readRequests.filter((r) => !(r.tool === tool.name && r.datasetId === id))
+    store.readRequests.push({ id: `rr-${Date.now()}-${requested}`, tool: tool.name, datasetId: id, status: 'pending', reason: '', requestedAt: stampNow(), requestedBy, decidedAt: '' })
+    requested += 1
+  })
+  return { requested, withdrawn }
+}
+/** 数据集侧批准读取：写入工具的 reads，并把数据源关联到工具所属服务。返回新关联的数据源名。 */
+export function approveReadRequest(reqId) {
+  const r = store.readRequests.find((x) => x.id === reqId)
+  const tool = store.tools.find((t) => t.name === r?.tool)
+  if (!r || !tool) return ''
+  r.status = 'approved'
+  r.decidedAt = stampNow()
+  if (!(tool.reads || []).includes(r.datasetId)) tool.reads = [...(tool.reads || []), r.datasetId]
+  return linkSourceForRead(tool, r.datasetId)
+}
+export function rejectReadRequest(reqId, reason) {
+  const r = store.readRequests.find((x) => x.id === reqId)
+  if (!r) return
+  r.status = 'rejected'
+  r.reason = String(reason || '').trim()
+  r.decidedAt = stampNow()
+}
+export function revokeToolRead(toolName, datasetId, reason) {
+  const tool = store.tools.find((t) => t.name === toolName)
+  if (!tool) return
+  tool.reads = (tool.reads || []).filter((id) => id !== datasetId)
+  store.readRequests = store.readRequests.filter((r) => !(r.tool === toolName && r.datasetId === datasetId))
+  store.readRequests.push({ id: `rr-${Date.now()}`, tool: toolName, datasetId, status: 'revoked', reason: String(reason || '').trim(), requestedAt: '', requestedBy: '', decidedAt: stampNow() })
+}
+export function forgetDatasets(ids) {
+  const gone = new Set(ids)
+  store.tools.forEach((t) => {
+    if ((t.reads || []).some((id) => gone.has(id))) t.reads = t.reads.filter((id) => !gone.has(id))
+  })
+  store.readRequests = store.readRequests.filter((r) => !gone.has(r.datasetId))
+}
+
+export function secViewName(ds) {
+  const src = store.sources.find((s) => s.id === ds?.data_source_id)
+  const name = ds?.table_name || ''
+  return src?.kind === 'oracle' ? `MCP_SEC.V_${name.replace(/^V_/i, '').toUpperCase()}` : `mcp_sec.v_${name.replace(/^v_/i, '')}`
+}
+/** 读取是否受控：数据集已生成中间视图，且工具所属服务透传用户身份。 */
+export function isReadControlled(tool, datasetId) {
+  const ds = store.datasets.find((d) => d.id === datasetId)
+  const svc = store.services.find((s) => s.id === tool?.svc)
+  return !!(ds?.sec_view && svc?.passIdentity)
+}
+export function uncontrolledReason(tool, datasetId) {
+  const ds = store.datasets.find((d) => d.id === datasetId)
+  const svc = store.services.find((s) => s.id === tool?.svc)
+  const why = []
+  if (!ds?.sec_view) why.push('数据集未生成中间视图')
+  if (!svc?.passIdentity) why.push(`${svc?.name || '所属服务'}未透传用户身份`)
+  return why.join('；')
+}
+export function generateSecView(ds) {
+  if (!ds) return
+  const t = stampNow()
+  ds.sec_view = { name: secViewName(ds), createdAt: t, syncedAt: t }
+}
+export function dropSecView(ds) {
+  if (ds) delete ds.sec_view
+}
+export function secViewDDL(ds) {
+  if (!ds) return ''
+  const src = store.sources.find((s) => s.id === ds.data_source_id)
+  const oracle = src?.kind === 'oracle'
+  const grant = findGrant(store, ds.id)
+  const masks = new Map((grant?.columns || []).filter((c) => c.on !== false && c.mask !== 'none').map((c) => [c.column_name, c]))
+  const visible = oracle
+    ? (c) => `INSTR(',' || SYS_CONTEXT('MCP_CTX', 'COLS_${ds.table_name}') || ',', ',${c},') > 0`
+    : (c) => `mcp_sec.col_visible('${ds.id}', '${c}')`
+  const cols = (ds.columns || []).map((c) => {
+    const m = masks.get(c.column_name)
+    if (!m) return `  ${c.column_name}`
+    const other = m.mask === 'mask' ? "'***'" : 'NULL'
+    return `  CASE WHEN ${visible(c.column_name)} THEN ${c.column_name} ELSE ${other} END AS ${c.column_name}`
+  })
+  const base = oracle ? `${src.schema || 'RISK'}.${ds.table_name}` : `${src?.database || 'db'}.${ds.table_name}`
+  const rowFilter = grant?.row_enabled && grant.row_filter ? grant.row_filter : ''
+  const groupMatch = oracle
+    ? `INSTR(',' || SYS_CONTEXT('MCP_CTX', 'GROUPS') || ',', ',' || a.group_id || ',') > 0`
+    : 'FIND_IN_SET(a.group_id, mcp_sec.cur_groups())'
+  const where = [
+    `EXISTS (SELECT 1 FROM ${oracle ? 'MCP_SEC.MCP_ACL' : 'mcp_sec.mcp_acl'} a WHERE a.dataset_id = '${ds.id}' AND ${groupMatch})`,
+    rowFilter ? `(${rowFilter})` : '',
+  ].filter(Boolean)
+  const head = oracle
+    ? [
+      '-- 上游工具每次查询前，用验签后的身份设置会话上下文：',
+      "-- EXEC MCP_SEC.SET_IDENTITY(p_user => :user_id, p_groups => :group_ids);",
+    ]
+    : [
+      '-- 上游工具每次查询前，用验签后的身份设置会话变量：',
+      "-- SET @mcp_user = :user_id, @mcp_groups = :group_ids;",
+      '-- MySQL 视图不能直接引用会话变量，经 mcp_sec.cur_groups() / col_visible() 读取。',
+    ]
+  return [
+    ...head,
+    `CREATE OR REPLACE VIEW ${secViewName(ds)} AS`,
+    'SELECT',
+    cols.join(',\n'),
+    `FROM ${base}`,
+    `WHERE ${where.join('\n  AND ')};`,
+  ].join('\n')
 }
 export function syncSourceBinding(src) {
   rememberPlatforms([src.name])

@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
   store, findDataset, findGrant, getOrCreateGrant, saveDatasetGrant,
-  hydrateColPolicies, describeColSubject,
+  hydrateColPolicies, colPolicyColumns, describeColSubject,
 } from '../store'
 import DsMark from './icons/DsMark.vue'
 
@@ -32,6 +32,7 @@ function emptyPolicy() {
   return {
     id: uid('cp'),
     column: '',
+    columns: [],
     mask: 'hide',
     subject: 'only',
     users: [],
@@ -65,12 +66,27 @@ const listed = computed(() => {
   const q = draft.kw.trim().toLowerCase()
   const list = draft.policies
   if (!q) return list
-  return list.filter((p) => String(p.column || '').toLowerCase().includes(q))
+  return list.filter((p) => colPolicyColumns(p).join(' ').toLowerCase().includes(q))
 })
-const unusedColumns = computed(() => {
-  const used = new Set(draft.policies.filter((p) => !editing.value || p.id !== editing.value.id).map((p) => p.column))
-  return columns.value.filter((c) => !used.has(c.column_name))
+const usedElsewhere = computed(() => {
+  const map = new Map()
+  draft.policies
+    .filter((p) => !editing.value || p.id !== editing.value.id)
+    .forEach((p) => colPolicyColumns(p).forEach((col) => map.set(col, maskText(p.mask))))
+  return map
 })
+const columnOptions = computed(() => columns.value.map((c) => {
+  const used = usedElsewhere.value.get(c.column_name)
+  return {
+    value: c.column_name,
+    label: used ? `${c.column_name}（已在其他规则：${used}）` : c.column_name,
+    disabled: !!used,
+  }
+}))
+const freeColumns = computed(() => columnOptions.value.filter((o) => !o.disabled).map((o) => o.value))
+function selectAllFree() {
+  if (editing.value) editing.value.columns = [...freeColumns.value]
+}
 
 function userName(id) {
   return userMap.value.get(id)?.name || id
@@ -95,7 +111,7 @@ function hydrate() {
   whitelistOn.value = draft.whitelist.length > 0
   editing.value = null
   if (props.policyId) {
-    const hit = draft.policies.find((p) => p.id === props.policyId || p.column === props.policyId)
+    const hit = draft.policies.find((p) => p.id === props.policyId || colPolicyColumns(p).includes(props.policyId))
     if (hit) editing.value = clone(hit)
   } else if (props.openAdd && draft.enabled) {
     startAdd()
@@ -125,7 +141,7 @@ function startAdd() {
 }
 
 function startEdit(p) {
-  editing.value = clone(p)
+  editing.value = { ...clone(p), columns: [...colPolicyColumns(p)] }
 }
 
 function cancelEdit() {
@@ -135,10 +151,12 @@ function cancelEdit() {
 function finishRule() {
   const p = editing.value
   if (!p) return
-  if (!p.column) {
-    Message.warning('请选择字段')
+  p.columns = (p.columns || []).filter((c) => !usedElsewhere.value.has(c))
+  if (!p.columns.length) {
+    Message.warning('请至少选择一个字段')
     return
   }
+  p.column = p.columns[0]
   if ((p.subject === 'only' || p.subject === 'except') && !(p.users || []).length && !(p.groups || []).length) {
     Message.warning('请选择用户或用户组')
     return
@@ -173,7 +191,7 @@ function saveAll() {
     Message.warning(err)
     return
   }
-  Message.success('列级权限已保存')
+  Message.success(ds.value.sec_view ? `列级权限已保存，并同步到中间视图 ${ds.value.sec_view.name}` : '列级权限已保存')
   emit('saved')
   close()
 }
@@ -181,9 +199,15 @@ function saveAll() {
 function reuseFrom(id) {
   if (!id) return
   const g = findGrant(store, id)
-  const policies = hydrateColPolicies(g).map((p) => ({ ...clone(p), id: uid('cp') }))
+  const own = new Set(columns.value.map((c) => c.column_name))
+  const policies = hydrateColPolicies(g)
+    .map((p) => {
+      const cols = colPolicyColumns(p).filter((c) => own.has(c))
+      return { ...clone(p), id: uid('cp'), columns: cols, column: cols[0] || '' }
+    })
+    .filter((p) => p.columns.length)
   if (!policies.length) {
-    Message.warning('该数据集暂无列级规则')
+    Message.warning('该数据集的列规则在当前数据集中没有同名字段，无法复用')
     return
   }
   draft.policies = policies
@@ -313,7 +337,12 @@ function reuseFrom(id) {
                 </thead>
                 <tbody>
                   <tr v-for="p in listed" :key="p.id">
-                    <td>{{ p.column }}</td>
+                    <td>
+                      <div class="col-tags">
+                        <a-tag v-for="c in colPolicyColumns(p)" :key="c" size="small">{{ c }}</a-tag>
+                      </div>
+                      <div v-if="colPolicyColumns(p).length > 1" class="muted">共 {{ colPolicyColumns(p).length }} 个字段</div>
+                    </td>
                     <td>
                       <div>—</div>
                       <div class="muted">{{ maskText(p.mask) }}</div>
@@ -334,16 +363,28 @@ function reuseFrom(id) {
           </section>
 
           <section v-else class="card editor">
-            <div class="card-hd">添加规则</div>
+            <div class="card-hd">{{ draft.policies.some((x) => x.id === editing.id) ? '编辑规则' : '添加规则' }}</div>
             <div class="editor-grid">
               <aside class="aside">
                 <div class="aside-title">权限规则</div>
                 <div class="field-block">
-                  <div class="lbl">选择字段</div>
-                  <a-select v-model="editing.column" allow-search placeholder="选择字段">
-                    <a-option v-for="c in unusedColumns" :key="c.column_name" :value="c.column_name">{{ c.column_name }}</a-option>
-                    <a-option v-if="editing.column && !unusedColumns.some((c) => c.column_name === editing.column)" :value="editing.column">{{ editing.column }}</a-option>
-                  </a-select>
+                  <div class="lbl lbl-row">
+                    <span>选择字段（可多选）</span>
+                    <span class="lbl-ops">
+                      <button type="button" class="link" :disabled="!freeColumns.length" @click="selectAllFree">全选</button>
+                      <button type="button" class="link" :disabled="!editing.columns.length" @click="editing.columns = []">清空</button>
+                    </span>
+                  </div>
+                  <a-select
+                    v-model="editing.columns"
+                    :options="columnOptions"
+                    multiple
+                    allow-search
+                    allow-clear
+                    :max-tag-count="6"
+                    placeholder="选择一个或多个字段"
+                  />
+                  <div class="muted" style="margin-top: 6px">已选 {{ editing.columns.length }} / {{ freeColumns.length }} 个可选字段。同一字段只能出现在一条规则里。</div>
                 </div>
                 <div class="field-block">
                   <div class="lbl">设置规则</div>
@@ -513,6 +554,10 @@ function reuseFrom(id) {
 .aside-title { font-weight: 600; margin-bottom: 12px; }
 .field-block { margin-bottom: 16px; }
 .lbl { color: #4e5969; font-size: 13px; margin-bottom: 8px; }
+.lbl-row { display: flex; align-items: center; justify-content: space-between; }
+.lbl-ops { display: inline-flex; gap: 10px; }
+.lbl-ops .link:disabled { color: #c9cdd4; cursor: not-allowed; }
+.col-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .wl-hd { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 .wl-empty { font-size: 13px; color: #86909c; }
 .cs-foot {

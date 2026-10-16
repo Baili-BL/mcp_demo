@@ -1,21 +1,63 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onDeactivated, reactive, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import G2LineChart from '../components/G2LineChart.vue'
 import {
-  store, SCHEMA_TPL, SECTOR_TAG, openPlayground, tagColor, keyForEndpoint,
+  store, SCHEMA_TPL, SECTOR_TAG, openPlayground, tagColor, keyForEndpoint, findSource,
+  requestToolReads, readRequestsOf, isReadControlled, uncontrolledReason,
 } from '../store'
 import { fmt, srColor } from '../utils'
 
 const emit = defineEmits(['goto'])
 const toolVisible = ref(false)
 const drawerVisible = ref(false)
+const readsEditing = ref(false)
+const readsDraft = ref([])
 const dataFlt = ref('all')
 const current = ref(null)
 const upstreamServices = computed(() => store.services.filter((s) => !s.builtin))
 const form = reactive({
-  name: '', cn: '', svc: upstreamServices.value[0]?.id, sector: '', version: 'v1.0.0', on: true, desc: '', schema: SCHEMA_TPL,
+  name: '', cn: '', svc: upstreamServices.value[0]?.id, sector: '', version: 'v1.0.0', on: true, desc: '', schema: SCHEMA_TPL, reads: [],
 })
+
+const datasetOptions = computed(() => store.datasets
+  .filter((d) => !d.deleted)
+  .map((d) => ({ value: d.id, label: `${findSource(d.data_source_id)?.name || '未知数据源'} · ${d.display_name}` })))
+function readsOf(t) {
+  return (t?.reads || []).map((id) => store.datasets.find((d) => d.id === id)).filter(Boolean)
+}
+function dsLabel(d) {
+  return `${findSource(d.data_source_id)?.name || ''} · ${d.display_name}`
+}
+function pendingOf(t) {
+  return readRequestsOf({ tool: t?.name, status: 'pending' })
+    .map((r) => store.datasets.find((d) => d.id === r.datasetId)).filter(Boolean)
+}
+function hasUncontrolled(t) {
+  return readsOf(t).some((d) => !isReadControlled(t, d.id))
+}
+const READ_STATUS = {
+  ok: { color: 'green', text: '受控' },
+  warn: { color: 'orange', text: '未受控' },
+  pending: { color: 'gray', text: '待授权' },
+  rejected: { color: 'red', text: '已拒绝' },
+  revoked: { color: 'red', text: '已撤销' },
+}
+function readRows(t) {
+  if (!t) return []
+  const rows = readsOf(t).map((d) => (isReadControlled(t, d.id)
+    ? { d, status: 'ok', note: `经 ${d.sec_view.name} 查询，按调用人用户组过滤` }
+    : { d, status: 'warn', note: `直连原表，行列权限不生效：${uncontrolledReason(t, d.id)}` }))
+  readRequestsOf({ tool: t.name }).filter((r) => r.status !== 'approved').forEach((r) => {
+    const d = store.datasets.find((x) => x.id === r.datasetId)
+    if (!d) return
+    const note = r.status === 'pending'
+      ? `${r.requestedBy || ''} 于 ${r.requestedAt} 提交，等待数据集负责人审批`
+      : `${r.decidedAt}${r.reason ? `：${r.reason}` : ''}`
+    rows.push({ d, status: r.status, note })
+  })
+  return rows
+}
 
 const tagOpts = computed(() => {
   const set = new Set(Object.keys(SECTOR_TAG))
@@ -36,10 +78,15 @@ const filtered = computed(() => store.tools.filter((t) => {
     if (!src.includes(store.flt.platform)) return false
   }
   if (dataFlt.value === 'bound' && !t.dataset?.datasetId) return false
-  if (dataFlt.value === 'view' && t.dataset?.objectType !== 'view') return false
-  if (dataFlt.value === 'table' && t.dataset?.objectType !== 'table' && t.dataset?.objectType !== 'sql') return false
+  if (dataFlt.value === 'reads' && !readsOf(t).length) return false
+  if (dataFlt.value === 'uncontrolled' && !hasUncontrolled(t)) return false
+  if (dataFlt.value === 'pending' && !pendingOf(t).length) return false
+  if (dataFlt.value === 'none' && (t.dataset || readsOf(t).length || pendingOf(t).length)) return false
   const kw = store.flt.kw
-  if (kw && !t.name.includes(kw) && !t.cn.includes(kw) && !t.desc.includes(kw) && !(t.dataset?.objectName || '').includes(kw)) return false
+  if (kw) {
+    const names = [t.dataset?.objectName || '', ...readsOf(t).map((d) => d.table_name), ...pendingOf(t).map((d) => d.table_name)].join(' ')
+    if (!t.name.includes(kw) && !t.cn.includes(kw) && !t.desc.includes(kw) && !names.includes(kw)) return false
+  }
   return true
 }))
 
@@ -54,7 +101,31 @@ function toggle(t) {
   t.on = !t.on
   Message[t.on ? 'success' : 'warning'](`工具 ${t.name} 已${t.on ? '启用' : '停用'}（模拟）`)
 }
-function openDrawer(t) { current.value = t; drawerVisible.value = true }
+function openDrawer(t) {
+  current.value = t
+  readsEditing.value = false
+  drawerVisible.value = true
+}
+function startEditReads() {
+  readsDraft.value = [...(current.value?.reads || []), ...pendingOf(current.value).map((d) => d.id)]
+  readsEditing.value = true
+}
+function readsResultText({ requested, withdrawn }) {
+  const parts = []
+  if (requested) parts.push(`已提交 ${requested} 个读取申请，等待数据集负责人审批`)
+  if (withdrawn) parts.push(`已撤回 ${withdrawn} 个读取`)
+  return parts.join('；')
+}
+function saveReads() {
+  const res = requestToolReads(current.value, readsDraft.value)
+  readsEditing.value = false
+  Message.success(readsResultText(res) || '读取的数据集没有变化')
+}
+function openReadDataset(d) {
+  drawerVisible.value = false
+  store.datasetFlt.sourceId = d.data_source_id
+  emit('goto', 'datasets')
+}
 function gotoPerm(t) {
   drawerVisible.value = false
   store.securityFlt.kw = t?.dataset?.displayName || ''
@@ -110,6 +181,7 @@ function openRegister() {
   form.on = true
   form.desc = ''
   form.schema = SCHEMA_TPL
+  form.reads = []
   toolVisible.value = true
 }
 
@@ -124,17 +196,24 @@ function submitTool() {
   store.tools.push({
     name, cn, svc: form.svc, sector: form.sector || '', version: form.version.trim() || 'v1.0.0',
     desc: form.desc.trim() || '（暂无描述）', schema,
-    calls: 0, sr: 100, lat: 0, on: form.on,
+    calls: 0, sr: 100, lat: 0, on: form.on, reads: [],
     week: [0, 0, 0, 0, 0, 0, 0], errs: [{ t: '—', code: '—', msg: '暂无错误记录' }],
   })
+  const tool = store.tools[store.tools.length - 1]
+  const res = requestToolReads(tool, form.reads)
   toolVisible.value = false
-  Message.success(`工具 ${name} 注册成功，已加入${store.svcMeta[form.svc].n}`)
+  const tail = res.requested ? `；${readsResultText(res)}` : ''
+  Message.success(`工具 ${name} 注册成功，已加入${store.svcMeta[form.svc].n}${tail}`)
   return true
 }
 function gotoDatasets() {
   toolVisible.value = false
   emit('goto', 'datasets')
 }
+onDeactivated(() => {
+  toolVisible.value = false
+  drawerVisible.value = false
+})
 </script>
 
 <template>
@@ -142,7 +221,7 @@ function gotoDatasets() {
     <div class="page-head">
       <div>
         <h2>工具目录</h2>
-        <div class="desc">全部已登记 MCP 工具（只读汇总）。上游服务工具由「MCP 中心」探测或在此注册；数据集工具在「数据集 → 发布工具」生成，行列权限统一在「数据权限」配置。</div>
+        <div class="desc">全部已登记 MCP 工具。上游服务工具由「MCP 中心」探测或在此注册，读取数据集需向数据集负责人申请；数据集工具在「数据集 → 发布工具」生成，行列权限统一在「数据权限」配置。</div>
       </div>
       <a-button type="primary" @click="openRegister">
         <template #icon><icon-plus /></template>注册工具
@@ -164,10 +243,12 @@ function gotoDatasets() {
             <a-option v-for="k in tagOpts" :key="k" :value="k">{{ k }}</a-option>
           </a-select>
           <a-select v-model="dataFlt" :style="{ width: '160px' }">
-            <a-option value="all">来源：全部</a-option>
-            <a-option value="bound">数据集工具</a-option>
-            <a-option value="view">数据视图</a-option>
-            <a-option value="table">数据表</a-option>
+            <a-option value="all">数据集：全部</a-option>
+            <a-option value="bound">由数据集发布</a-option>
+            <a-option value="reads">读取数据集</a-option>
+            <a-option value="uncontrolled">有未受控读取</a-option>
+            <a-option value="pending">读取待授权</a-option>
+            <a-option value="none">未关联数据集</a-option>
           </a-select>
           <a-input-search v-model="store.flt.kw" allow-clear placeholder="搜索工具名 / 描述 / 表名" :style="{ width: '260px' }" />
         </a-space>
@@ -189,8 +270,22 @@ function gotoDatasets() {
               <div class="mono tool-name">{{ record.name }}</div>
               <div class="muted">{{ record.cn }} — {{ record.desc }}</div>
               <div v-if="record.dataset" class="muted">
+                <a-tag color="green" size="small" style="margin-right: 4px">发布自</a-tag>
                 <a-tag v-if="kindTag(record)" :color="kindTag(record).color" size="small" style="margin-right: 4px">{{ kindTag(record).text }}</a-tag>
                 {{ record.dataset.sourceName }} · {{ record.dataset.objectName }}
+              </div>
+              <div v-else-if="readsOf(record).length || pendingOf(record).length" class="muted reads-line">
+                <a-tag color="arcoblue" size="small">读取</a-tag>
+                <a-tooltip
+                  v-for="d in readsOf(record)"
+                  :key="d.id"
+                  :content="isReadControlled(record, d.id) ? `受控：经 ${d.sec_view.name} 按调用人用户组过滤` : `未受控：${uncontrolledReason(record, d.id)}`"
+                >
+                  <span :class="['read-item', { warn: !isReadControlled(record, d.id) }]">
+                    {{ dsLabel(d) }}<template v-if="!isReadControlled(record, d.id)">（未受控）</template>
+                  </span>
+                </a-tooltip>
+                <span v-for="d in pendingOf(record)" :key="'p-' + d.id" class="read-item pending">{{ dsLabel(d) }}（待授权）</span>
               </div>
             </template>
           </a-table-column>
@@ -265,6 +360,30 @@ function gotoDatasets() {
           <a-button size="small" type="primary" @click="openDataset(current)">打开数据集（修改 / 重新发布）</a-button>
           <a-button size="small" type="outline" @click="gotoPerm(current)">去数据权限</a-button>
         </a-space>
+        <template v-else>
+          <div class="reads-head">
+            <a-typography-title :heading="6" style="margin: 20px 0 8px">读取的数据集</a-typography-title>
+            <a-button v-if="!readsEditing" type="text" size="mini" @click="startEditReads">编辑</a-button>
+          </div>
+          <template v-if="readsEditing">
+            <a-select v-model="readsDraft" :options="datasetOptions" multiple allow-search allow-clear placeholder="勾选该工具要查询的数据集" />
+            <div class="muted" style="margin-top: 6px">新增的数据集需数据集负责人在「数据集 → 读取授权」批准；取消勾选会撤回申请或放弃已授权的读取。</div>
+            <a-space style="margin-top: 8px">
+              <a-button size="small" type="primary" @click="saveReads">提交</a-button>
+              <a-button size="small" @click="readsEditing = false">取消</a-button>
+            </a-space>
+          </template>
+          <template v-else>
+            <div v-if="readRows(current).length" class="read-rows">
+              <div v-for="r in readRows(current)" :key="r.status + r.d.id" class="read-row">
+                <a-tag :color="READ_STATUS[r.status].color" size="small">{{ READ_STATUS[r.status].text }}</a-tag>
+                <a-link class="read-name" @click="openReadDataset(r.d)">{{ dsLabel(r.d) }}</a-link>
+                <div class="muted read-note">{{ r.note }}</div>
+              </div>
+            </div>
+            <div v-else class="muted">未关联。申请读取并获批后，调用这个工具时由中间视图按调用人用户组过滤行和列。</div>
+          </template>
+        </template>
         <a-typography-title :heading="6" style="margin-top:20px">输入参数 Schema（inputSchema）</a-typography-title>
         <pre class="schema-pre">{{ JSON.stringify(current.schema, null, 2) }}</pre>
         <a-typography-title :heading="6" style="margin-top:20px">近 30 天调用量</a-typography-title>
@@ -313,8 +432,22 @@ function gotoDatasets() {
           <a-col :span="12"><a-form-item label="初始状态"><a-switch v-model="form.on" /><span style="margin-left:8px;font-size:12px;color:var(--color-text-3)">启用后立即对接入端可见</span></a-form-item></a-col>
         </a-row>
         <a-form-item label="工具描述"><a-input v-model="form.desc" placeholder="一句话说明工具能力与数据口径" /></a-form-item>
+        <a-form-item label="申请读取的数据集（可选）" extra="提交后由数据集负责人审批；批准后数据源自动关联到所属服务，调用时经中间视图按用户组过滤。">
+          <a-select v-model="form.reads" :options="datasetOptions" multiple allow-search allow-clear placeholder="选择数据集" />
+        </a-form-item>
         <a-form-item label="输入参数 Schema（inputSchema，JSON）"><a-textarea v-model="form.schema" :auto-size="{ minRows: 8, maxRows: 12 }" /></a-form-item>
       </a-form>
     </a-modal>
   </div>
 </template>
+
+<style scoped>
+.reads-head { display: flex; align-items: center; justify-content: space-between; }
+.reads-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.read-item.warn { color: rgb(var(--orange-6)); }
+.read-item.pending { color: var(--color-text-4); }
+.read-rows { display: flex; flex-direction: column; gap: 8px; }
+.read-row { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; }
+.read-name { justify-self: start; }
+.read-note { grid-column: 2; font-size: 12px; }
+</style>

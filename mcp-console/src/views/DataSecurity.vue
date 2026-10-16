@@ -1,9 +1,9 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onDeactivated, ref } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import {
   store, findDataset, findGrant, getOrCreateGrant, saveDatasetGrant,
-  hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, describeColSubject,
+  hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, colPolicyColumns, describeColSubject,
 } from '../store'
 import RowPermStudio from '../components/RowPermStudio.vue'
 import ColPermStudio from '../components/ColPermStudio.vue'
@@ -89,7 +89,8 @@ function rowItems() {
       })
       continue
     }
-    if (g?.row_filter) {
+    const sqlDef = g ? (g.row_filter_def ?? g.row_filter) : ''
+    if (sqlDef) {
       out.push({
         id: `${d.id}:row:sql`,
         kind: 'row',
@@ -97,7 +98,7 @@ function rowItems() {
         datasetName: d.display_name,
         name: `${d.display_name} 行权限`,
         fields: '—',
-        ruleText: g.row_filter,
+        ruleText: sqlDef,
         users: [],
         groups: [],
         subject: 'all',
@@ -130,7 +131,7 @@ function colItems() {
         datasetId: d.id,
         datasetName: d.display_name,
         name: `${d.display_name} 列权限`,
-        fields: p.column,
+        fields: colPolicyColumns(p).join('、'),
         ruleText: maskLabel(mask),
         mask,
         users: p.users || [],
@@ -181,6 +182,12 @@ function confirmPick() {
   pickOpen.value = false
   openStudio(tab.value, pickDs.value, '', true)
 }
+
+onDeactivated(() => {
+  rowStudioOpen.value = false
+  colStudioOpen.value = false
+  pickOpen.value = false
+})
 
 function openEdit(record) {
   openStudio(record.kind, record.datasetId, record.policyId || record.columnName || '', false)

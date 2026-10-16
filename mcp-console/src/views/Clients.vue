@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onDeactivated, reactive, ref, watch } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import { store, showToolsetConfig, issueClient, toolsetsOfClient, CLIENT_TYPES } from '../store'
 import { fmt, keyExpireMeta, keyStatus, addDays, fmtDateTime, copyText } from '../utils'
@@ -188,6 +188,11 @@ watch(() => store.clientFlt.openIssue, (open) => {
   visible.value = true
   store.clientFlt.openIssue = false
 }, { immediate: true })
+onDeactivated(() => {
+  visible.value = false
+  renewVisible.value = false
+  quotaVisible.value = false
+})
 </script>
 
 <template>
@@ -195,7 +200,7 @@ watch(() => store.clientFlt.openIssue, (open) => {
     <div class="page-head">
       <div>
         <h2>接入与密钥</h2>
-        <div class="desc">密钥只在此签发：每把 Key 挂到已开通用户并选择可用工具集；配额 / QPS / 到期也在这里管理。其他页面的「签发密钥」都会跳到这里。</div>
+        <div class="desc">密钥只在此签发：每把 Key 挂到已注册用户并选择可用工具集；配额 / QPS / 到期也在这里管理。其他页面的「签发密钥」都会跳到这里。</div>
       </div>
       <a-button type="primary" @click="openCreate">
         <template #icon><icon-plus /></template>新建密钥
@@ -323,7 +328,7 @@ watch(() => store.clientFlt.openIssue, (open) => {
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="归属用户" required extra="停用该账号时，名下 Key 全部失效">
-              <a-select v-model="form.userId" allow-search placeholder="选择已开通账号">
+              <a-select v-model="form.userId" allow-search placeholder="选择已注册账号">
                 <a-option v-for="u in activeUsers" :key="u.id" :value="u.id">{{ u.name }} · {{ u.role }}</a-option>
               </a-select>
             </a-form-item>

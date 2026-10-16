@@ -1,15 +1,16 @@
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onDeactivated, reactive, ref, watch } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import {
   store, findSource, findGrant, getOrCreateGrant, previewDataset,
-  saveDatasetGrant, toolsOfDataset,
+  saveDatasetGrant, toolsOfDataset, readerToolsOfDataset, readRequestsOf, forgetDatasets, isReadControlled, colPolicyColumns,
   ROOT_FOLDER_ID, folderPath, flattenFolders, folderChildren, findFolder,
 } from '../store'
 import SchemaExplorer from '../components/SchemaExplorer.vue'
 import PublishToolModal from '../components/PublishToolModal.vue'
 import RowPermStudio from '../components/RowPermStudio.vue'
 import ColPermStudio from '../components/ColPermStudio.vue'
+import ReadAccessDrawer from '../components/ReadAccessDrawer.vue'
 import Icon1 from '../components/icons/Icon1.vue'
 import Icon2 from '../components/icons/Icon2.vue'
 import Icon3 from '../components/icons/Icon3.vue'
@@ -563,6 +564,26 @@ function userMail(id) {
 function boundTools(d) {
   return toolsOfDataset(store, d.id)
 }
+const readAccessOpen = ref(false)
+const readAccessDsId = ref('')
+const pendingReadTotal = computed(() => readRequestsOf({ status: 'pending' }).length)
+function pendingReads(d) {
+  return readRequestsOf({ datasetId: d.id, status: 'pending' }).length
+}
+function openReadAccess(d) {
+  readAccessDsId.value = d?.id || ''
+  readAccessOpen.value = true
+}
+function readerTools(d) {
+  return readerToolsOfDataset(store, d.id)
+}
+function uncontrolledReaders(d) {
+  return readerTools(d).filter((t) => !isReadControlled(t, d.id))
+}
+function readerTip(d) {
+  const bad = uncontrolledReaders(d).map((t) => t.name)
+  return `读取此数据集的工具：${readerTools(d).map((t) => t.name).join('、')}${bad.length ? `。未受控（行列权限不生效）：${bad.join('、')}` : ''}。点击管理读取授权`
+}
 function grantOf(d) {
   return findGrant(store, d.id)
 }
@@ -576,7 +597,7 @@ function hasRowAcl(d) {
 function hasColAcl(d) {
   const g = grantOf(d)
   if (!g?.col_enabled) return false
-  if ((g.col_policies || []).some((p) => p.column && p.on !== false)) return true
+  if ((g.col_policies || []).some((p) => colPolicyColumns(p).length && p.on !== false)) return true
   return (g.columns || []).some((c) => c.allowed === false || c.mask === 'hide' || c.mask === 'mask')
 }
 
@@ -677,6 +698,7 @@ function removeDataset(d) {
   const gi = store.datasetGrants.findIndex((g) => g.dataset_id === d.id)
   if (gi >= 0) store.datasetGrants.splice(gi, 1)
   bound.forEach((t) => { t.on = false })
+  forgetDatasets([d.id])
 }
 function removeFolder(f) {
   const parent = f.parent_id || ROOT_FOLDER_ID
@@ -688,11 +710,13 @@ function removeFolder(f) {
 }
 function onDelete(d) {
   const bound = boundTools(d)
+  const readers = readerTools(d)
+  const parts = []
+  if (bound.length) parts.push(`将同时停用发布的工具：${bound.map((t) => t.name).join('、')}。`)
+  if (readers.length) parts.push(`以下上游工具读取此数据集，删除后可能取数失败：${readers.map((t) => t.name).join('、')}。`)
   Modal.confirm({
     title: `删除数据集「${d.display_name}」？`,
-    content: bound.length
-      ? `将同时停用绑定工具：${bound.map((t) => t.name).join('、')}`
-      : '仅从数据集列表移除。数据源连接不会删除。',
+    content: parts.length ? parts.join('') : '仅从数据集列表移除。数据源连接不会删除。',
     okText: '删除',
     onOk: () => {
       removeDataset(d)
@@ -807,9 +831,23 @@ function onMore(key, d) {
     else if (key === 'move') openMove(d)
     else if (key === 'prop') openProps(d)
     else if (key === 'publish') openPublish(d)
+    else if (key === 'reads') openReadAccess(d)
     else if (key === 'delete') onDelete(d)
   })
 }
+
+onDeactivated(() => {
+  readAccessOpen.value = false
+  rowStudioOpen.value = false
+  colStudioOpen.value = false
+  publishOpen.value = false
+  collabOpen.value = false
+  previewOpen.value = false
+  schemaOpen.value = false
+  propOpen.value = false
+  folderOpen.value = false
+  moveOpen.value = false
+})
 </script>
 
 <template>
@@ -818,9 +856,12 @@ function onMore(key, d) {
     <div class="page-head ds-head">
       <div>
         <h2>数据集</h2>
-        <div class="desc">管理同步表、CSV 数据集和 SQL 创建的数据集。数据集工具只在这里「发布工具」；谁能看哪些行列在「数据权限」配置。</div>
+        <div class="desc">管理同步表、CSV 数据集和 SQL 创建的数据集。数据集工具只在这里「发布工具」；上游工具读取数据集需在「读取授权」批准；谁能看哪些行列在「数据权限」配置。</div>
       </div>
       <a-space>
+        <a-badge :count="pendingReadTotal">
+          <a-button @click="openReadAccess(null)">读取授权</a-button>
+        </a-badge>
         <a-button @click="openCreateFolder(ROOT_FOLDER_ID)">新建文件夹</a-button>
         <a-button @click="gotoCreate('dataset-sql')">SQL 数据集</a-button>
         <a-button type="primary" @click="gotoCreate('dataset-create')">
@@ -953,7 +994,13 @@ function onMore(key, d) {
               <DsMark />
               <span class="ds-title">{{ record.display_name }}</span>
               <a-tag v-if="hasRowAcl(record) || hasColAcl(record)" size="small" color="orangered">行列权限</a-tag>
-              <a-tag v-if="boundTools(record).length" size="small" color="arcoblue">工具 {{ boundTools(record).map((t) => t.name).join('、') }}</a-tag>
+              <a-tag v-if="boundTools(record).length" size="small" color="green">已发布 {{ boundTools(record).map((t) => t.name).join('、') }}</a-tag>
+              <a-tooltip v-if="readerTools(record).length" :content="readerTip(record)">
+                <a-tag size="small" :color="uncontrolledReaders(record).length ? 'orange' : 'arcoblue'" @click.stop.prevent="openReadAccess(record)">
+                  被 {{ readerTools(record).length }} 个工具读取<template v-if="uncontrolledReaders(record).length"> · {{ uncontrolledReaders(record).length }} 个未受控</template>
+                </a-tag>
+              </a-tooltip>
+              <a-tag v-if="pendingReads(record)" size="small" color="orangered" @click.stop.prevent="openReadAccess(record)">{{ pendingReads(record) }} 个读取申请</a-tag>
             </a>
             <button type="button" class="ds-eye" title="预览" @click.stop="openPreview(record)">
               <IconEye :size="14" />
@@ -988,9 +1035,6 @@ function onMore(key, d) {
             <button type="button" class="ds-ico-btn" title="编辑" @click="openEdit(record)">
               <Icon4 :size="14" />
             </button>
-            <button type="button" class="ds-ico-btn" title="新建" @click="gotoCreate('dataset-create')">
-              <Icon5 :size="14" />
-            </button>
             <button type="button" class="ds-ico-btn" title="协作者" @click="openCollab(record)">
               <Icon6 :size="14" />
             </button>
@@ -1006,6 +1050,7 @@ function onMore(key, d) {
                 <a-doption value="move">移动到</a-doption>
                 <a-doption value="prop">属性</a-doption>
                 <a-doption value="publish">{{ boundTools(record).length ? '更新工具' : '发布工具' }}</a-doption>
+                <a-doption value="reads">读取授权</a-doption>
                 <a-doption value="delete">删除</a-doption>
               </template>
             </a-dropdown>
@@ -1016,6 +1061,7 @@ function onMore(key, d) {
     </div>
 
     <SchemaExplorer v-model:visible="schemaOpen" :dataset="schemaDs" />
+    <ReadAccessDrawer v-model:visible="readAccessOpen" v-model:dataset-id="readAccessDsId" />
 
     <a-modal v-model:visible="collabOpen" title="协作者" :width="560" unmount-on-close :footer="false">
       <p class="hint" style="margin-top:0">协作者可在控制台使用 / 编辑该数据集，不影响 MCP 调用时能看到的数据范围（那部分在「数据权限」配置）。</p>

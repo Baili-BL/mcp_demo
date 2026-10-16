@@ -99,7 +99,7 @@ onDeactivated(() => {
     <div class="page-head">
       <div>
         <h2>用户组管理</h2>
-        <div class="desc">数据权限只认用户组（不再按「团队」字段匹配）。内部组对应团队，外部组对应合作公司；开通账号时自动加入所属组织。</div>
+        <div class="desc">数据权限只认用户组（不再按「团队」字段匹配）。内部组对应团队，外部组对应合作公司；注册账号时自动加入所属组织。</div>
       </div>
       <a-button type="primary" @click="openCreate">
         <template #icon><icon-plus /></template>新建用户组

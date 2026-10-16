@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
-  store, DATABASE_TYPES, ACCESS_MODES, ALIYUN_REGIONS, inferConnector,
+  store, DATABASE_TYPES, ACCESS_MODES, inferConnector,
   whitelistText, testSourceConnection, syncSourceBinding, rememberPlatforms, isDbKind,
 } from '../store'
 import { copyText } from '../utils'
@@ -19,13 +19,13 @@ const typeQuery = ref('')
 const selected = ref(null)
 const formTesting = ref(false)
 const testedOk = ref(false)
+const testedCatalog = ref([])
 const tip = ref(null)
 
 const blank = () => ({
   name: '', code: '', kind: 'mysql', envKey: 'MYSQL_DSN',
   host: '', port: 3306, database: '', user: '', password: '', passwordSet: false,
-  accessMode: 'read', vpcMode: false, vpcId: '',
-  vpcAccessKeyId: '', vpcAccessKeySecret: '', vpcAkSet: false, vpcInstanceId: '', vpcRegion: 'cn-hangzhou',
+  accessMode: 'read',
   connectMode: 'manual', dbVersion: '8.0',
   ssl: false, sshEnabled: false, sshHost: '', sshUser: '', sshPassword: '', sshPasswordSet: false, sshPort: 22,
   initSqlEnabled: false, initSql: '', uploadEnabled: false,
@@ -68,6 +68,7 @@ function resetForCreate() {
   typeQuery.value = ''
   step.value = 1
   testedOk.value = false
+  testedCatalog.value = []
   tip.value = null
 }
 function fillFromSource(src) {
@@ -85,13 +86,6 @@ function fillFromSource(src) {
     password: '',
     passwordSet: !!src.passwordSet,
     accessMode: src.accessMode || (src.readonly === false ? 'write' : 'read'),
-    vpcMode: !!src.vpcMode,
-    vpcId: src.vpcId || '',
-    vpcAccessKeyId: src.vpcAccessKeyId || '',
-    vpcAccessKeySecret: '',
-    vpcAkSet: !!src.vpcAkSet,
-    vpcInstanceId: src.vpcInstanceId || src.vpcId || '',
-    vpcRegion: src.vpcRegion || 'cn-hangzhou',
     connectMode: src.connectMode === 'auto' ? 'auto' : 'manual',
     dbVersion: src.dbVersion || '8.0',
     ssl: !!src.ssl,
@@ -114,6 +108,7 @@ function fillFromSource(src) {
   })
   step.value = 2
   testedOk.value = false
+  testedCatalog.value = []
   tip.value = null
 }
 
@@ -154,12 +149,6 @@ function validate() {
     if (!form.database.trim()) return '请填写数据库'
     if (!form.user.trim()) return '请填写用户名'
     if (!form.passwordSet && !String(form.password || '').trim()) return '请填写密码'
-    if (form.vpcMode) {
-      if (!String(form.vpcAccessKeyId || '').trim()) return 'VPC 数据源请填写购买者 AccessKey Id'
-      if (!form.vpcAkSet && !String(form.vpcAccessKeySecret || '').trim()) return 'VPC 数据源请填写购买者 AccessKey Secret'
-      if (!String(form.vpcInstanceId || '').trim()) return 'VPC 数据源请填写实例 ID'
-      if (!form.vpcRegion) return 'VPC 数据源请选择区域'
-    }
     if (form.sshEnabled) {
       if (!form.sshHost.trim()) return '请填写 SSH Host'
       if (!form.sshUser.trim()) return '请填写 SSH 用户名'
@@ -194,12 +183,12 @@ function payloadFromForm() {
     user: db ? form.user.trim() : '',
     passwordSet: form.kind === 'http' ? false : (form.passwordSet || !!String(form.password || '').trim()),
     accessMode: db ? accessMode : 'read',
-    vpcMode: db ? !!form.vpcMode : false,
-    vpcId: db && form.vpcMode ? (form.vpcInstanceId || form.vpcId || '').trim() : '',
-    vpcAccessKeyId: db && form.vpcMode ? form.vpcAccessKeyId.trim() : '',
-    vpcAkSet: db && form.vpcMode ? (form.vpcAkSet || !!String(form.vpcAccessKeySecret || '').trim()) : false,
-    vpcInstanceId: db && form.vpcMode ? form.vpcInstanceId.trim() : '',
-    vpcRegion: db && form.vpcMode ? form.vpcRegion : '',
+    vpcMode: false,
+    vpcId: '',
+    vpcAccessKeyId: '',
+    vpcAkSet: false,
+    vpcInstanceId: '',
+    vpcRegion: '',
     connectMode: db ? form.connectMode : '',
     dbVersion: db ? form.dbVersion : '',
     ssl: db ? !!form.ssl : false,
@@ -228,11 +217,17 @@ async function testForm() {
   testedOk.value = false
   try {
     await new Promise((r) => setTimeout(r, 500))
-    const result = testSourceConnection({ ...payloadFromForm(), enabled: true, catalog: props.editing?.catalog || [] })
+    const probe = {
+      ...payloadFromForm(),
+      enabled: true,
+      catalog: props.editing?.catalog ? [...props.editing.catalog] : [],
+    }
+    const result = testSourceConnection(probe)
     tip.value = result.success
       ? { ok: true, text: `连接成功，发现 ${result.tables_found} 张表/视图。测试通过后可确定保存。` }
       : { ok: false, text: `连接失败：${result.message}` }
     testedOk.value = !!result.success
+    testedCatalog.value = result.success ? (probe.catalog || []) : []
     if (result.success) Message.success('连接测试通过')
     else Message.error(tip.value.text)
   } finally {
@@ -248,11 +243,18 @@ function save() {
     return
   }
   const data = payloadFromForm()
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
   if (props.editing) {
     const cur = store.sources.find((s) => s.id === props.editing.id)
     if (!cur) return
     const prev = cur.name
     Object.assign(cur, data)
+    if (testedOk.value) {
+      cur.status = 'connected'
+      cur.lastCheck = now
+      cur.lastError = ''
+      if (testedCatalog.value.length) cur.catalog = testedCatalog.value
+    }
     syncSourceBinding(cur, prev)
     Message.success('数据源已更新')
     emit('saved', cur)
@@ -262,11 +264,11 @@ function save() {
   const src = {
     id: 'src-' + Date.now().toString(36),
     ...data,
-    catalog: [],
+    catalog: testedOk.value ? [...testedCatalog.value] : [],
     objects: [],
-    status: data.enabled ? 'idle' : 'disabled',
-    latency: null,
-    lastCheck: '',
+    status: testedOk.value ? 'connected' : (data.enabled ? 'idle' : 'disabled'),
+    latency: testedOk.value ? 32 : null,
+    lastCheck: testedOk.value ? now : '',
     lastError: '',
     lastSyncedAt: '',
   }
@@ -284,6 +286,7 @@ function close() {
 function backToTypes() {
   step.value = 1
   testedOk.value = false
+  testedCatalog.value = []
   tip.value = null
 }
 async function copyWhitelist() {
@@ -350,12 +353,12 @@ async function copyWhitelist() {
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="16">
-            <a-form-item :label="form.vpcMode ? '数据库地址（内网）' : '数据库地址'" required>
+            <a-form-item label="数据库地址" required>
               <a-input v-model="form.host" class="mono" placeholder="IP 或域名" />
             </a-form-item>
           </a-col>
           <a-col :span="8">
-            <a-form-item :label="form.vpcMode ? '端口（内网）' : '端口'" required>
+            <a-form-item label="端口" required>
               <a-input-number v-model="form.port" :min="1" :max="65535" style="width: 100%" />
             </a-form-item>
           </a-col>
@@ -377,38 +380,6 @@ async function copyWhitelist() {
         </a-row>
 
         <template v-if="isMysql">
-          <a-form-item>
-            <a-checkbox v-model="form.vpcMode">VPC 数据源</a-checkbox>
-            <div class="hint">仅当数据库部署在云厂商 VPC / ECS 内网时勾选。</div>
-          </a-form-item>
-          <template v-if="form.vpcMode">
-            <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item label="购买者 AccessKey Id" required>
-                  <a-input v-model="form.vpcAccessKeyId" class="mono" placeholder="LTAI5t…" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="购买者 AccessKey Secret" :required="!form.vpcAkSet">
-                  <a-input-password v-model="form.vpcAccessKeySecret" :placeholder="form.vpcAkSet ? '已配置，留空不修改' : 'AccessKey Secret'" />
-                </a-form-item>
-              </a-col>
-            </a-row>
-            <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item label="实例 ID" required>
-                  <a-input v-model="form.vpcInstanceId" class="mono" placeholder="rm-xxxxxxxx" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="区域" required>
-                  <a-select v-model="form.vpcRegion" :style="{ width: '100%' }">
-                    <a-option v-for="r in ALIYUN_REGIONS" :key="r.value" :value="r.value">{{ r.label }}</a-option>
-                  </a-select>
-                </a-form-item>
-              </a-col>
-            </a-row>
-          </template>
           <a-form-item>
             <a-checkbox v-model="form.ssl">SSL</a-checkbox>
             <span class="muted" style="margin-left: 8px">目标库已开启 SSL 时勾选</span>

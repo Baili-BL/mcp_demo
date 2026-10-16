@@ -1,9 +1,10 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import {
   store, DATABASE_TYPES, VENDOR_LABELS, inferConnector, isDbKind, servicesBoundTo,
-  detachSource, datasetsOfSource, testSourceConnection, syncSchema, toolsOfDataset,
+  detachSource, datasetsOfSource, testSourceConnection, syncSchema, linkedToolsOfDataset,
+  forgetDatasets, isReadControlled,
 } from '../store'
 import CreateSourceWizard from '../components/CreateSourceWizard.vue'
 
@@ -53,12 +54,6 @@ function statusColor(s) {
   if (t === '连接失败') return 'red'
   return 'gray'
 }
-function networkText(s) {
-  if (!s || s.kind === 'http') return '—'
-  if (s.vpcMode) return `VPC ${s.vpcInstanceId || s.vpcId || '—'} · ${s.vpcRegion || ''}`
-  return '公网'
-}
-
 watch(selected, (s) => {
   if (!s && store.sources[0]) activeId.value = store.sources[0].id
 })
@@ -126,6 +121,7 @@ function onDelete(src) {
       const removedIds = new Set(store.datasets.filter((d) => d.data_source_id === src.id).map((d) => d.id))
       store.datasets = store.datasets.filter((d) => d.data_source_id !== src.id)
       store.datasetGrants = store.datasetGrants.filter((g) => !removedIds.has(g.dataset_id))
+      forgetDatasets([...removedIds])
       detachSource(src)
       if (activeId.value === src.id) activeId.value = store.sources[0]?.id || ''
       Message.success('已删除')
@@ -136,6 +132,9 @@ function goDatasets(sourceId) {
   store.datasetFlt.sourceId = sourceId || ''
   emit('goto', 'datasets')
 }
+onDeactivated(() => {
+  wizardOpen.value = false
+})
 </script>
 
 <template>
@@ -192,7 +191,6 @@ function goDatasets(sourceId) {
         <a-descriptions :column="2" size="medium" bordered style="margin-bottom: 16px">
           <a-descriptions-item label="数据源类型">{{ selectedConnector.label }}</a-descriptions-item>
           <a-descriptions-item label="来源">{{ VENDOR_LABELS[selectedConnector.vendor] || selected.vendor || '—' }}</a-descriptions-item>
-          <a-descriptions-item v-if="selected.kind === 'mysql'" label="网络">{{ networkText(selected) }}</a-descriptions-item>
           <a-descriptions-item v-if="selected.kind === 'mysql'" label="数据库版本">{{ selected.dbVersion || '—' }}</a-descriptions-item>
           <a-descriptions-item label="账号">{{ selected.user || '—' }}</a-descriptions-item>
           <a-descriptions-item label="环境变量"><span class="mono">{{ selected.envKey }}</span></a-descriptions-item>
@@ -230,12 +228,18 @@ function goDatasets(sourceId) {
             <a-table-column title="估计行数" :width="110" align="right">
               <template #cell="{ record }">{{ record.row_count_estimate?.toLocaleString?.() || '—' }}</template>
             </a-table-column>
-            <a-table-column title="联动工具" :width="180">
+            <a-table-column title="联动工具" :width="220">
               <template #cell="{ record }">
-                <span v-if="toolsOfDataset(store, record.id).length" class="mono">
-                  {{ toolsOfDataset(store, record.id).map((t) => t.name).join('、') }}
-                </span>
-                <span v-else class="muted">未绑定</span>
+                <a-space v-if="linkedToolsOfDataset(store, record.id).length" wrap :size="4">
+                  <a-tag
+                    v-for="t in linkedToolsOfDataset(store, record.id)"
+                    :key="t.name"
+                    size="small"
+                    :color="t.dataset ? 'green' : (isReadControlled(t, record.id) ? 'arcoblue' : 'orange')"
+                    class="mono"
+                  >{{ t.dataset ? '发布' : (isReadControlled(t, record.id) ? '读取' : '读取·未受控') }} · {{ t.name }}</a-tag>
+                </a-space>
+                <span v-else class="muted">无</span>
               </template>
             </a-table-column>
             <a-table-column title="说明">

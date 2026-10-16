@@ -207,7 +207,7 @@ export function isDbKind(kind) {
   return !!kind && kind !== 'http'
 }
 
-function stampNow() {
+export function stampNow() {
   const d = new Date()
   const p = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
@@ -358,17 +358,12 @@ export function defaultGrantForDataset(dataset, preset = {}) {
     row_other: 'all',
     row_join: 'and',
     row_mode: 'combo',
-    col_policies: hidden.size
-      ? columns.filter((c) => c.mask === 'hide').map((c, i) => ({
-        id: `col-seed-${i}`,
-        column: c.column_name,
-        mask: 'hide',
-        subject: 'all_on',
-        users: [],
-        groups: [],
-        on: true,
-      }))
-      : [],
+    col_policies: (() => {
+      const cols = columns.filter((c) => c.mask === 'hide').map((c) => c.column_name)
+      return cols.length
+        ? [{ id: 'col-seed-0', column: cols[0], columns: cols, mask: 'hide', subject: 'all_on', users: [], groups: [], on: true }]
+        : []
+    })(),
     col_other: 'allow',
     col_whitelist: [],
     collab: [],
@@ -1081,11 +1076,22 @@ export function colPolicyApplies(p, user, userId) {
   return false
 }
 
+export function colPolicyColumns(p) {
+  if (Array.isArray(p?.columns) && p.columns.length) return p.columns
+  return p?.column ? [p.column] : []
+}
+
 export function hydrateColPolicies(grant) {
-  if ((grant?.col_policies || []).length) return grant.col_policies.map((p) => ({ ...p }))
+  if ((grant?.col_policies || []).length) {
+    return grant.col_policies.map((p) => {
+      const columns = [...colPolicyColumns(p)]
+      return { ...p, columns, column: columns[0] || '' }
+    })
+  }
   return (grant?.columns || []).filter((c) => c.mask && c.mask !== 'none').map((c, i) => ({
     id: `col-legacy-${c.column_name}-${i}`,
     column: c.column_name,
+    columns: [c.column_name],
     mask: c.mask === 'mask' ? 'mask' : 'hide',
     subject: (c.users || []).length ? 'only' : 'all_on',
     users: [...(c.users || [])],
@@ -1115,7 +1121,7 @@ export function columnsForUser(grant, userId, users = []) {
   if (policies.length) {
     const affected = policies.some((p) => colPolicyApplies(p, user, userId))
     return cols.map((c) => {
-      const p = policies.find((x) => x.column === c.column_name)
+      const p = policies.find((x) => colPolicyColumns(x).includes(c.column_name))
       if (p) {
         if (colPolicyApplies(p, user, userId)) {
           const mask = p.mask || 'hide'
@@ -1166,7 +1172,7 @@ export function saveDatasetGrant(store, draft) {
   const col_whitelist = draft.col_whitelist !== undefined ? [...draft.col_whitelist] : [...(prev.col_whitelist || [])]
   let nextColumns = columns
   if (draft.col_policies !== undefined) {
-    const map = new Map(col_policies.filter((p) => p.column).map((p) => [p.column, p]))
+    const map = new Map(col_policies.flatMap((p) => colPolicyColumns(p).map((col) => [col, p])))
     nextColumns = columns.map((c) => {
       const p = map.get(c.column_name)
       if (!p) return { ...c, mask: 'none', allowed: true, users: [], on: true }
@@ -1202,9 +1208,13 @@ export function saveDatasetGrant(store, draft) {
     version: (prev.version || 1) + 1,
     updated_at: stampNow(),
   }
+  const toggleOnly = draft.row_rules === undefined && draft.row_policies === undefined && draft.row_sql === undefined
   const compiled = draft.row_filter !== undefined
     ? String(draft.row_filter || '').trim()
-    : ((row_policies || []).length ? compileGrantRowFilter({ ...row, row_enabled: true }) : compileRowFilter(row_rules, extraSql))
+    : ((row_policies || []).length
+        ? compileGrantRowFilter({ ...row, row_enabled: true })
+        : (compileRowFilter(row_rules, extraSql) || (toggleOnly ? (prev.row_filter_def ?? prev.row_filter ?? '') : '')))
+  row.row_filter_def = compiled
   row.row_filter = row.row_enabled === false ? '' : compiled
   if (draft.row_enabled === undefined) {
     row.row_enabled = prev.row_enabled ?? !!(compiled || (row_policies || []).length)
@@ -1213,11 +1223,21 @@ export function saveDatasetGrant(store, draft) {
   if (i >= 0) store.datasetGrants.splice(i, 1, row)
   else store.datasetGrants.push(row)
   syncBoundTools(store, row.dataset_id)
+  const ds = store.datasets.find((d) => d.id === row.dataset_id)
+  if (ds?.sec_view) ds.sec_view.syncedAt = row.updated_at
   return ''
 }
 
 export function toolsOfDataset(store, datasetId) {
   return store.tools.filter((t) => t.dataset?.datasetId === datasetId)
+}
+
+export function readerToolsOfDataset(store, datasetId) {
+  return store.tools.filter((t) => !t.dataset && (t.reads || []).includes(datasetId))
+}
+
+export function linkedToolsOfDataset(store, datasetId) {
+  return [...toolsOfDataset(store, datasetId), ...readerToolsOfDataset(store, datasetId)]
 }
 
 export function datasetKind(d) {

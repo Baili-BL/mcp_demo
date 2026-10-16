@@ -88,13 +88,10 @@ function emptyPolicy(name = '') {
 
 const draft = reactive({
   enabled: true,
-  mode: 'combo',
   other: 'all',
   join: 'and',
   whitelist: [],
   policies: [],
-  tagField: '',
-  tagKey: 'team',
 })
 const editing = ref(null)
 const whitelistOn = ref(false)
@@ -169,16 +166,11 @@ function hydrate() {
   const dataset = ds.value
   const g = dataset ? getOrCreateGrant(store, dataset) : null
   draft.enabled = props.openAdd || !g || g.row_enabled !== false
-  draft.mode = g?.row_mode || 'combo'
   draft.other = g?.row_other || 'all'
   draft.join = g?.row_join || 'and'
   draft.whitelist = [...(g?.row_whitelist || [])]
   draft.policies = hydrateRowPolicies(g).map((p) => clone(p))
   whitelistOn.value = draft.whitelist.length > 0
-  const tagPol = draft.policies.find((p) => (p.blocks || []).some((b) => (b.conditions || []).some((c) => c.method === 'tag')))
-  const tagCond = tagPol?.blocks?.flatMap((b) => b.conditions || []).find((c) => c.method === 'tag')
-  draft.tagField = tagCond?.column || columns.value[0]?.column_name || ''
-  draft.tagKey = tagCond?.tagKey || 'team'
   editing.value = null
   if (props.policyId) {
     const hit = draft.policies.find((p) => p.id === props.policyId)
@@ -323,31 +315,6 @@ function removePolicy(p) {
   draft.policies = draft.policies.filter((x) => x.id !== p.id)
 }
 
-function applyTagMode() {
-  if (!draft.tagField) {
-    Message.warning('请选择用于匹配的字段')
-    return false
-  }
-  draft.policies = [{
-    id: uid('p'),
-    name: '用户标签关联',
-    subject: 'all',
-    users: [],
-    groups: [],
-    on: true,
-    blocks: [{
-      id: uid('b'),
-      join: 'and',
-      conditions: [{
-        ...emptyCond(draft.tagField),
-        method: 'tag',
-        tagKey: draft.tagKey,
-      }],
-    }],
-  }]
-  return true
-}
-
 function saveAll() {
   if (!ds.value) {
     Message.warning('请选择数据集')
@@ -357,15 +324,14 @@ function saveAll() {
     finishRule()
     if (editing.value) return
   }
-  if (draft.mode === 'tag' && !applyTagMode()) return
-  if (draft.enabled && draft.mode === 'combo' && !draft.policies.length) {
+  if (draft.enabled && !draft.policies.length) {
     Message.warning('请先添加规则')
     return
   }
   const err = saveDatasetGrant(store, {
     dataset_id: ds.value.id,
     row_enabled: draft.enabled,
-    row_mode: draft.mode,
+    row_mode: 'combo',
     row_other: draft.other,
     row_join: draft.join,
     row_whitelist: [...draft.whitelist],
@@ -375,7 +341,7 @@ function saveAll() {
     Message.warning(err)
     return
   }
-  Message.success('行级权限已保存')
+  Message.success(ds.value.sec_view ? `行级权限已保存，并同步到中间视图 ${ds.value.sec_view.name}` : '行级权限已保存')
   emit('saved')
   close()
 }
@@ -389,7 +355,6 @@ function reuseFrom(id) {
     return
   }
   draft.policies = policies
-  draft.mode = g.row_mode || 'combo'
   draft.other = g.row_other || 'all'
   draft.join = g.row_join || 'and'
   draft.whitelist = [...(g.row_whitelist || [])]
@@ -429,7 +394,7 @@ function reuseFrom(id) {
             <a-switch v-model="draft.enabled" size="small" />
             启用行级权限
           </label>
-          <a-dropdown v-model:popup-visible="reuseOpen" :disabled="!reuseSources.length && draft.mode === 'combo'" @select="reuseFrom">
+          <a-dropdown v-model:popup-visible="reuseOpen" :disabled="!reuseSources.length" @select="reuseFrom">
             <a-button>
               <template #icon><icon-copy /></template>
               规则复用
@@ -442,10 +407,6 @@ function reuseFrom(id) {
         </div>
 
         <div class="rs-subbar">
-          <div class="seg">
-            <button type="button" :class="{ on: draft.mode === 'combo' }" @click="draft.mode = 'combo'">按条件组合</button>
-            <button type="button" :class="{ on: draft.mode === 'tag' }" @click="draft.mode = 'tag'">按用户标签关联</button>
-          </div>
           <div class="other">
             <icon-info-circle />
             其他用户
@@ -456,24 +417,7 @@ function reuseFrom(id) {
           </div>
         </div>
 
-        <template v-if="draft.mode === 'tag' && !editing">
-          <section class="card">
-            <div class="card-hd">按用户标签过滤可见行</div>
-            <div class="tag-row">
-              <span class="lbl">匹配字段</span>
-              <a-select v-model="draft.tagField" allow-search :style="{ width: '220px' }" placeholder="选择字段">
-                <a-option v-for="c in columns" :key="c.column_name" :value="c.column_name">{{ c.column_name }}</a-option>
-              </a-select>
-              <span class="lbl">绑定标签</span>
-              <a-select v-model="draft.tagKey" :style="{ width: '160px' }">
-                <a-option v-for="t in TAG_KEYS" :key="t.value" :value="t.value">{{ t.label }}</a-option>
-              </a-select>
-            </div>
-            <p class="hint">查询时该字段值等于当前用户的{{ TAG_KEYS.find((t) => t.value === draft.tagKey)?.label }}。</p>
-          </section>
-        </template>
-
-        <template v-else-if="!editing">
+        <template v-if="!editing">
           <section class="card">
             <div class="card-hd">
               <button type="button" class="add" @click="startAdd">+ 添加规则</button>
@@ -728,27 +672,7 @@ function reuseFrom(id) {
   gap: 8px;
   font-size: 14px;
 }
-.seg {
-  display: inline-flex;
-  padding: 3px;
-  background: #fff;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
-}
-.seg button {
-  border: none;
-  background: none;
-  padding: 5px 14px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #4e5969;
-}
-.seg button.on {
-  background: #e8f3ff;
-  color: rgb(22, 100, 255);
-  font-weight: 600;
-}
+.rs-subbar { justify-content: flex-end; }
 .other {
   display: inline-flex;
   align-items: center;
@@ -887,7 +811,6 @@ function reuseFrom(id) {
   cursor: pointer;
 }
 .hint-chip:hover { border-color: rgb(22, 100, 255); color: rgb(22, 100, 255); }
-.tag-row { display: flex; align-items: center; gap: 10px; }
 .rs-foot {
   display: flex;
   justify-content: flex-end;

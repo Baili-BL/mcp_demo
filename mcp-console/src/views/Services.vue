@@ -8,7 +8,7 @@ import {
   clientsOfToolset, keyOfToolset, keyForEndpoint, gotoIssueKey,
 } from '../store'
 import { fmt, keyExpireMeta, keyStatus } from '../utils'
-import { computed, reactive, ref } from 'vue'
+import { computed, h, onDeactivated, reactive, ref } from 'vue'
 
 const emit = defineEmits(['goto'])
 const svcVisible = ref(false)
@@ -266,6 +266,44 @@ function debugSvc(s) {
 function modeName(id) {
   return CALL_MODES.find((m) => m.id === id)?.title || id
 }
+function readCountOf(svcId) {
+  return store.tools.filter((t) => t.svc === svcId && !t.dataset).reduce((n, t) => n + (t.reads || []).length, 0)
+}
+function togglePassIdentity(svc, on) {
+  svc.passIdentity = !!on
+  const n = readCountOf(svc.id)
+  if (on) Message.success(`${svc.name} 已开启透传用户身份；已生成中间视图的读取将按调用人用户组过滤`)
+  else Message.warning(`${svc.name} 已关闭透传用户身份${n ? `，该服务 ${n} 个读取变为未受控` : ''}`)
+}
+function showIdentitySpec(svc) {
+  Modal.info({
+    title: `${svc.name} · 用户身份接入说明`,
+    width: 640,
+    content: () => h('pre', { style: 'margin:0;font-size:12px;line-height:1.7;white-space:pre-wrap;font-family:Menlo,Consolas,monospace' }, [
+      '1. 网关转发 tools/call 时附带请求头：',
+      '   X-MCP-Identity: <JWT，RS256 签名>',
+      '   载荷：{ "sub": "用户 ID", "groups": ["有色组"], "tool": "工具名", "exp": 过期时间 }',
+      '',
+      '2. 上游用平台公钥验签：',
+      `   https://mcp.futures-data.cn/.well-known/jwks.json  （kid: ${svc.code}-2026）`,
+      '',
+      '3. 查询前设置会话身份，并且只查 mcp_sec 下的中间视图：',
+      '   MySQL： SET @mcp_user = :sub, @mcp_groups = :groups;',
+      '   Oracle：EXEC MCP_SEC.SET_IDENTITY(:sub, :groups);',
+      '',
+      '4. 验签失败或缺少请求头时拒绝调用，不要回退到直连原表。',
+    ].join('\n')),
+  })
+}
+onDeactivated(() => {
+  svcVisible.value = false
+  setVisible.value = false
+  addVisible.value = false
+  discVisible.value = false
+  joinVisible.value = false
+  keyDrawerVisible.value = false
+  linkVisible.value = false
+})
 </script>
 
 <template>
@@ -325,6 +363,20 @@ function modeName(id) {
                 <a-space wrap>
                   <a-tag v-for="x in record.sources" :key="x" color="cyan">{{ x }}</a-tag>
                   <span v-if="!record.sources.length" class="muted">{{ record.builtin ? '随发布的数据集' : '未关联' }}</span>
+                </a-space>
+              </template>
+            </a-table-column>
+            <a-table-column :width="130">
+              <template #title>
+                <a-tooltip content="开启后网关转发调用时附带签名的用户身份令牌，上游验签后用它查询中间视图，行列权限才对上游工具生效">
+                  <span>透传用户身份 <icon-question-circle /></span>
+                </a-tooltip>
+              </template>
+              <template #cell="{ record }">
+                <span v-if="record.builtin" class="muted">平台内执行</span>
+                <a-space v-else :size="4">
+                  <a-switch size="small" :model-value="!!record.passIdentity" @change="(v) => togglePassIdentity(record, v)" />
+                  <a-button v-if="record.passIdentity" type="text" size="mini" @click="showIdentitySpec(record)">接入说明</a-button>
                 </a-space>
               </template>
             </a-table-column>
