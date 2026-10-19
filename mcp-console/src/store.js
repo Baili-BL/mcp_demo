@@ -4,6 +4,7 @@ import {
   publishDatasetTool, publishVibeDatasetTool, DATASET_SVC_ID, datasetKind, datasetKindLabel,
   testSourceConnection, syncSchema, previewDataset, previewSql,
   updateColumn, saveDatasetGrant, compileRowFilter, compileGrantRowFilter, hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, colPolicyColumns, describeColSubject, isMeasureColumn, findGrant, getOrCreateGrant, findDataset, columnsForUser, ruleAppliesToUser,
+  isRowGroup, rowRoot, rowLeaves,
   toolsOfDataset, readerToolsOfDataset, linkedToolsOfDataset, syncBoundTools, queryDatasetWithGrant, listAuthorizedDatasets,
   draftFromCatalog, saveObjectGrant, createModeledDataset, createSqlDataset, updateModeledDataset, updateSqlDataset, compileModelSql,
   ROOT_FOLDER_ID, folderPath, folderCrumbs, folderChildren, flattenFolders, findFolder, stampNow,
@@ -16,6 +17,7 @@ export {
   publishDatasetTool, publishVibeDatasetTool, DATASET_SVC_ID, datasetKind, datasetKindLabel,
   testSourceConnection, syncSchema, previewDataset, previewSql,
   updateColumn, saveDatasetGrant, compileRowFilter, compileGrantRowFilter, hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, colPolicyColumns, describeColSubject, isMeasureColumn, findGrant, getOrCreateGrant, findDataset, columnsForUser, ruleAppliesToUser,
+  isRowGroup, rowRoot, rowLeaves,
   toolsOfDataset, readerToolsOfDataset, linkedToolsOfDataset, syncBoundTools, queryDatasetWithGrant, listAuthorizedDatasets,
   draftFromCatalog, saveObjectGrant,
 }

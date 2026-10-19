@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL 占位符使用说明</title>
+<link rel="stylesheet" href="/docs/article.css">
+<style>
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .toc a {
+    font-size: 13px; color: var(--ink-2); text-decoration: none;
+    border: 1px solid var(--line); background: var(--card);
+    padding: 4px 12px; border-radius: 999px;
+  }
+  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+  .kind {
+    display: inline-block; font-size: 12px; font-weight: 600;
+    padding: 1px 9px; border-radius: 999px; margin-right: 8px; vertical-align: 2px;
+  }
+  .k-val { background: #e8f3ff; color: #165dff; }
+  .k-expr { background: #f5e8ff; color: #722ed1; }
+  .k-condition { background: #e8fffb; color: #0a9a96; }
+  .k-accel { background: #fff3e8; color: #d9480f; }
+  .k-tag { background: #e8ffea; color: #0f8a5f; }
+  .k-system { background: #f2f3f5; color: #4e5969; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pair > div > .cap { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+  .pair pre { margin-top: 4px; }
+  .rule { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
+  .rule:last-child { border-bottom: none; }
+  .rule .x { color: #c5283d; font-weight: 700; }
+  .rule .w { color: #d9480f; font-weight: 700; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 6px 18px; margin: 12px 0;
+  }
+  pre .c { color: #8b9098; }
+  pre .k { color: #ffb86b; }
+  pre .p { color: #7dd3fc; }
+  @media (max-width: 720px) { .pair { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap wide">
+  <p class="kicker">Dataset · SQL 占位符</p>
+  <h1>SQL 占位符使用说明</h1>
+  <p class="lede">
+    占位符让同一份 SQL 数据集按<strong>调用时传入的值</strong>或<strong>当前访问用户的身份</strong>动态过滤。写法与 Quick BI 一致：
+    在 SQL 里放占位符，在「占位符管理」里设置变量类型和默认值；数据集发布成 MCP 工具后，占位符会自动变成工具的入参。
+  </p>
+  <nav class="toc">
+    <a href="#quick">快速上手</a>
+    <a href="#types">六类占位符</a>
+    <a href="#val">值</a>
+    <a href="#expr">表达式</a>
+    <a href="#condition">条件</a>
+    <a href="#accel">加速</a>
+    <a href="#tag">标签</a>
+    <a href="#system">系统</a>
+    <a href="#config">配置项</a>
+    <a href="#rules">校验规则</a>
+    <a href="#mcp">与 MCP 工具</a>
+    <a href="#faq">常见问题</a>
+  </nav>
+
+  <section id="quick">
+    <h2>快速上手</h2>
+    <ol class="steps">
+      <li>进入「数据管理 › 数据集」，点击 <b>SQL 数据集</b>，选择数据源。</li>
+      <li>在编辑器里写 SELECT，并在需要动态的地方写占位符，例如 <code>WHERE region IN ('$val{region_ph}')</code>。</li>
+      <li>点击工具栏的 <b>占位符管理</b>，右侧抽屉会列出系统自动识别到的占位符。按钮上的数字是占位符个数，变红表示有配置错误。</li>
+      <li>为每个占位符选择<b>变量类型</b>，填写<b>查询默认值</b>并选择生效范围（仅数据集 / 全局生效），点击「确定」。</li>
+      <li>点击 <b>运行</b>。「运行结果」展示预览数据，「实际执行 SQL」展示占位符替换后的语句。用到标签 / 系统占位符时，可在右上角切换<b>预览身份</b>。</li>
+      <li>点击 <b>确认编辑</b> 保存。占位符配置随数据集一起保存，再次编辑时会回显。</li>
+    </ol>
+    <div class="callout">
+      <b>手动新建：</b>在抽屉里点击「新建占位符」，选择类型、填写变量名（表达式 / 条件 / 加速还要选物理字段），添加后点该行的「插入」，占位符会写到 SQL 编辑器的光标位置。
+    </div>
+  </section>
+
+  <section id="types">
+    <h2>六类占位符一览</h2>
+    <table>
+      <thead><tr><th style="width:120px">类型</th><th style="width:300px">写法</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td><span class="kind k-val">值</span></td><td><code>'$val{name}'</code></td><td>传入一个值或一组值；日期区间用 <code>.get(0)</code> / <code>.get(1)</code> 取起止</td></tr>
+        <tr><td><span class="kind k-expr">表达式</span></td><td><code>$expr{字段:name}</code></td><td>传入完整筛选条件（字段 + 运算符 + 值），调用方可自由选择筛选方式</td></tr>
+        <tr><td><span class="kind k-condition">条件</span></td><td><code>$condition{一级字段,二级字段:name}</code></td><td>按层级传入一组值，字段最多 10 个</td></tr>
+        <tr><td><span class="kind k-accel">加速</span></td><td><code>$accel{字段:name}</code></td><td>抽取加速时动态替换时间窗口；每个数据集仅 1 个，仅数据集层生效</td></tr>
+        <tr><td><span class="kind k-tag">标签</span></td><td><code>'$tag{标签名}'</code></td><td>取当前访问用户的标签值，做按人过滤</td></tr>
+        <tr><td><span class="kind k-system">系统</span></td><td><code>'$system{accountName}'</code></td><td>取当前访问用户的账号信息</td></tr>
+      </tbody>
+    </table>
+    <p>旧写法 <code>${name}</code> 仍可使用，按值占位符处理。</p>
+  </section>
+
+  <section id="val">
+    <h2>值占位符</h2>
+    <p><span class="kind k-val">值</span>最常用。文本、日期要用英文单引号包住，数值不加引号；多选文本放在 <code>IN ('…')</code> 里，系统会把多个值展开成 <code>'a', 'b'</code>。</p>
+    <div class="pair">
+      <div>
+        <pre><span class="k">SELECT</span> * <span class="k">FROM</span> base_from_ths_data
+<span class="k">WHERE</span> region <span class="k">IN</span> (<span class="p">'$val{region_ph}'</span>)   <span class="c">-- 文本 多选</span>
+  <span class="k">AND</span> variety = <span class="p">'$val{variety_ph}'</span>  <span class="c">-- 文本 单选</span>
+  <span class="k">AND</span> qty &gt; <span class="p">$val{min_qty}</span>             <span class="c">-- 数值</span>
+  <span class="k">AND</span> trade_date &gt;= <span class="p">'$val{rg.get(0)}'</span> <span class="c">-- 区间起始</span>
+  <span class="k">AND</span> trade_date &lt;= <span class="p">'$val{rg.get(1)}'</span> <span class="c">-- 区间结束</span></pre>
+        <div class="cap">SQL 写法</div>
+      </div>
+      <div>
+        <pre><span class="k">SELECT</span> * <span class="k">FROM</span> base_from_ths_data
+<span class="k">WHERE</span> region <span class="k">IN</span> ('华东', '华北')
+  <span class="k">AND</span> variety = 'CU'
+  <span class="k">AND</span> qty &gt; 100
+  <span class="k">AND</span> trade_date &gt;= '2026-09-01'
+  <span class="k">AND</span> trade_date &lt;= '2026-09-30'</pre>
+        <div class="cap">默认值：region_ph = 华东,华北；variety_ph = CU；min_qty = 100；rg = 2026-09-01~2026-09-30</div>
+      </div>
+    </div>
+    <div class="callout">
+      <b>没有传值时：</b>值占位符所在的整个条件会被替换成 <code>1=1</code>，等于不过滤；「实际执行 SQL」上方会提示是哪个占位符被跳过。<br>
+      <b>区间默认值：</b>用了 <code>.get(0)</code> / <code>.get(1)</code> 的占位符，默认值写成 <code>起始~结束</code>。<br>
+      <b>类型自动判断：</b>不带引号的 <code>$val</code> 会被识别为「数值」，带 <code>.get</code> 的识别为「日期-年月日」，可在抽屉里改。
+    </div>
+  </section>
+
+  <section id="expr">
+    <h2>表达式占位符</h2>
+    <p><span class="kind k-expr">表达式</span>把整个筛选条件交给调用方：等于、大于、介于都由传入的表达式决定。冒号前是<b>物理字段名</b>，冒号后是占位符名。</p>
+    <div class="pair">
+      <div>
+        <pre><span class="k">SELECT</span> trade_date, variety, price
+<span class="k">FROM</span> base_from_ths_data
+<span class="k">WHERE</span> <span class="p">$expr{trade_date:trade_date}</span>
+  <span class="k">AND</span> <span class="p">$expr{variety:variety_ph}</span></pre>
+        <div class="cap">SQL 写法</div>
+      </div>
+      <div>
+        <pre><span class="k">SELECT</span> trade_date, variety, price
+<span class="k">FROM</span> base_from_ths_data
+<span class="k">WHERE</span> trade_date &gt;= '2026-01-01'
+  <span class="k">AND</span> variety <span class="k">IN</span> ('CU', 'AL')</pre>
+        <div class="cap">trade_date 默认值写完整表达式；variety_ph 只写值 CU,AL，系统自动补成 IN</div>
+      </div>
+    </div>
+    <p>默认值可以写完整表达式（如 <code>area = '东北'</code>），也可以只写值：一个值生成 <code>字段 = '值'</code>，多个值（逗号分隔）生成 <code>字段 IN (…)</code>。不传值时整段替换为 <code>1=1</code>。</p>
+  </section>
+
+  <section id="condition">
+    <h2>条件占位符</h2>
+    <p><span class="kind k-condition">条件</span>用于层级取值，例如「板块 › 品种」。字段按层级顺序写，最多 10 个，顺序需与调用方传入的层级一致。</p>
+    <pre><span class="k">SELECT</span> * <span class="k">FROM</span> base_from_ths_data
+<span class="k">WHERE</span> <span class="p">$condition{sector,variety:sector_tree}</span></pre>
+    <p>预览运行时按第一级字段生成条件，例如默认值 <code>有色,黑色</code> 生成 <code>sector IN ('有色', '黑色')</code>；不传值时为 <code>1=1</code>。</p>
+  </section>
+
+  <section id="accel">
+    <h2>加速占位符</h2>
+    <p><span class="kind k-accel">加速</span>放在 WHERE 中，用于大表的抽取加速：编辑和预览阶段用默认值限定一个较小的时间窗口，避免 SQL 运行超时；正式抽取时由引擎按配置动态替换时间范围。</p>
+    <pre><span class="k">SELECT</span> * <span class="k">FROM</span> edb_series_data
+<span class="k">WHERE</span> <span class="p">$accel{data_time:data_time_acc}</span>
+<span class="c">-- 默认值（必须是完整表达式）：data_time &gt;= '2026-01-01'</span></pre>
+    <ul>
+      <li>每个数据集只能有 <b>1 个</b>加速占位符。</li>
+      <li>默认值生效范围固定为「仅数据集」，不能改；默认值必须是完整过滤表达式，不能只写一个日期。</li>
+      <li>加速占位符不会出现在发布的 MCP 工具入参里。</li>
+    </ul>
+  </section>
+
+  <section id="tag">
+    <h2>标签占位符</h2>
+    <p><span class="kind k-tag">标签</span>在运行时读取<b>当前访问用户</b>的标签，适合「每个人只看自己团队的数据」。可用标签取自「组织管理」中的用户信息：</p>
+    <table>
+      <thead><tr><th style="width:120px">标签</th><th>取值来源</th><th style="width:220px">示例（陈可）</th></tr></thead>
+      <tbody>
+        <tr><td><code>团队</code></td><td>用户的团队 / 公司</td><td>数智中心</td></tr>
+        <tr><td><code>角色</code></td><td>用户的角色</td><td>管理员</td></tr>
+        <tr><td><code>用户组</code></td><td>用户加入的所有用户组（多个值）</td><td>数智中心</td></tr>
+        <tr><td><code>身份</code></td><td>内部员工 / 外部客户</td><td>内部员工</td></tr>
+      </tbody>
+    </table>
+    <div class="pair">
+      <div>
+        <pre><span class="k">SELECT</span> * <span class="k">FROM</span> crm_account
+<span class="k">WHERE</span> team = <span class="p">'$tag{团队}'</span>
+  <span class="k">AND</span> owner_group <span class="k">IN</span> (<span class="p">'$tag{用户组}'</span>)</pre>
+        <div class="cap">SQL 写法</div>
+      </div>
+      <div>
+        <pre><span class="k">SELECT</span> * <span class="k">FROM</span> crm_account
+<span class="k">WHERE</span> team = '数智中心'
+  <span class="k">AND</span> owner_group <span class="k">IN</span> ('数智中心')</pre>
+        <div class="cap">以「陈可」身份运行</div>
+      </div>
+    </div>
+    <p>标签占位符不需要默认值。在 SQL 编辑页运行时，结果区右上角会出现「预览身份」，切换用户即可看到不同人的执行结果。</p>
+  </section>
+
+  <section id="system">
+    <h2>系统占位符</h2>
+    <p><span class="kind k-system">系统</span>取当前访问用户的账号信息，支持 4 个变量：</p>
+    <table>
+      <thead><tr><th style="width:240px">写法</th><th>含义</th><th style="width:220px">示例（陈可）</th></tr></thead>
+      <tbody>
+        <tr><td><code>$system{accountName}</code></td><td>用户名（登录账号，优先邮箱，其次手机号）</td><td>chenke@example.com</td></tr>
+        <tr><td><code>$system{userNick}</code></td><td>用户昵称（组织内姓名）</td><td>陈可</td></tr>
+        <tr><td><code>$system{userId}</code></td><td>平台内用户 ID</td><td>u-admin</td></tr>
+        <tr><td><code>$system{accountId}</code></td><td>三方系统用户 ID（企业微信 userid）</td><td>chenke</td></tr>
+      </tbody>
+    </table>
+    <pre><span class="k">SELECT</span> * <span class="k">FROM</span> crm_account <span class="k">WHERE</span> owner = <span class="p">'$system{userNick}'</span></pre>
+  </section>
+
+  <section id="config">
+    <h2>配置项</h2>
+    <table>
+      <thead><tr><th style="width:120px">配置项</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>变量名</td><td>占位符名称，可直接在抽屉里修改；修改后 SQL 中的引用会一起替换。系统占位符的变量名不可改。</td></tr>
+        <tr><td>类型</td><td>值 / 表达式 / 条件 / 加速 / 标签 / 系统，由写法决定，识别后不可修改。</td></tr>
+        <tr><td>变量类型</td><td>文本、数值、日期-年、日期-年季、日期-年月、日期-年周、日期-年月日、日期-年月日时分秒。标签和系统占位符运行时取当前用户，无需设置。</td></tr>
+        <tr><td>查询默认值</td><td>最多 150 个字符。表达式 / 加速占位符的默认值填完整表达式，如 <code>report_date &lt; '2025-04-01'</code>。</td></tr>
+        <tr><td>生效范围</td><td><b>仅数据集</b>：只在 SQL 编辑页运行时使用。<b>全局生效</b>：发布的 MCP 工具等下游也使用，调用方不传值时取该默认值。</td></tr>
+        <tr><td>引用</td><td>显示该占位符在 SQL 中出现的次数，以及是否用在 SELECT、是否是区间写法；手动新建但还没插入的显示「未引用」。</td></tr>
+        <tr><td>操作</td><td>「插入」写到 SQL 光标处；删除表达式 / 条件 / 加速占位符时，SQL 中对应片段会替换为 <code>1=1</code>。</td></tr>
+      </tbody>
+    </table>
+    <h3>日期格式</h3>
+    <table>
+      <thead><tr><th style="width:200px">变量类型</th><th>默认值格式</th></tr></thead>
+      <tbody>
+        <tr><td>日期-年</td><td><code>2026</code></td></tr>
+        <tr><td>日期-年季</td><td><code>2026-Q3</code></td></tr>
+        <tr><td>日期-年月</td><td><code>2026-09</code></td></tr>
+        <tr><td>日期-年周</td><td><code>2026-38</code></td></tr>
+        <tr><td>日期-年月日</td><td><code>2026-09-16</code></td></tr>
+        <tr><td>日期-年月日时分秒</td><td><code>2026-09-16 09:30:00</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="rules">
+    <h2>校验规则</h2>
+    <p>以下 <b class="x">✕</b> 项会阻止「确定」和「确认编辑」，<b class="w">!</b> 项只提示不阻止。</p>
+    <div class="card">
+      <div class="rule"><span class="x">✕</span><span>用在 SELECT 语句中的值 / 表达式 / 条件占位符，必须设置<b>全局生效</b>的默认值。</span></div>
+      <div class="rule"><span class="x">✕</span><span>每个数据集仅支持 1 个加速占位符；加速占位符的默认值必须是完整表达式。</span></div>
+      <div class="rule"><span class="x">✕</span><span>默认值不超过 150 个字符；数值类型的默认值必须是数字。</span></div>
+      <div class="rule"><span class="x">✕</span><span>条件占位符字段不超过 10 个；系统占位符只能用 accountName / userNick / userId / accountId。</span></div>
+      <div class="rule"><span class="w">!</span><span>值占位符没有默认值：运行时所在条件按 <code>1=1</code> 处理。</span></div>
+      <div class="rule"><span class="w">!</span><span>日期默认值与所选变量类型格式不符；区间占位符默认值没有写成「起始~结束」。</span></div>
+      <div class="rule"><span class="w">!</span><span>标签名不在用户标签中，运行时取值为空；手动新建的占位符尚未在 SQL 中引用。</span></div>
+    </div>
+  </section>
+
+  <section id="mcp">
+    <h2>与 MCP 工具的关系</h2>
+    <p>带占位符的 SQL 数据集发布成 MCP 工具后：</p>
+    <table>
+      <thead><tr><th style="width:120px">类型</th><th>在工具中的表现</th></tr></thead>
+      <tbody>
+        <tr><td><span class="kind k-val">值</span></td><td>变成工具入参。数值为 <code>number</code>，区间为长度 2 的数组 <code>[起始, 结束]</code>，其余为 <code>string</code>；全局生效的默认值写入入参 <code>default</code>。</td></tr>
+        <tr><td><span class="kind k-expr">表达式</span></td><td>变成 <code>string</code> 入参，传完整条件；不传则不过滤。</td></tr>
+        <tr><td><span class="kind k-condition">条件</span></td><td>变成字符串数组入参，按层级传值；不传则不过滤。</td></tr>
+        <tr><td><span class="kind k-tag">标签</span> <span class="kind k-system">系统</span></td><td>不暴露给调用方，由平台根据<b>透传的用户身份</b>自动填入，调用方无法伪造。需要所在服务在「MCP 中心」开启「透传用户身份」。</td></tr>
+        <tr><td><span class="kind k-accel">加速</span></td><td>只在数据集层生效，不出现在工具入参中。</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <b>建议：</b>按人隔离的数据优先用标签 / 系统占位符，或「数据权限」里的行权限，不要让调用方通过值占位符自己传团队、用户名。
+    </div>
+  </section>
+
+  <section id="faq">
+    <h2>常见问题</h2>
+    <h3>为什么文本占位符要加单引号？</h3>
+    <p>系统只替换 <code>$val{…}</code> 本身，引号由 SQL 提供。写成 <code>'$val{name}'</code> 才能得到 <code>'华东'</code>；多选时得到 <code>'华东', '华北'</code>，所以要放在 <code>IN (…)</code> 里。</p>
+    <h3>删除了占位符，为什么它又出现了？</h3>
+    <p>列表是根据 SQL 自动识别的。值 / 标签 / 系统占位符删除后 SQL 不会自动改写，需要同时在 SQL 里删掉对应写法，否则下次识别会重新出现。</p>
+    <h3>运行结果和「实际执行 SQL」不一致？</h3>
+    <p>当前控制台的运行结果是按数据源抽样的预览数据，「实际执行 SQL」才是替换后会下发到数据库的语句，以后者为准核对占位符是否正确。</p>
+    <h3>「仅数据集」和「全局生效」怎么选？</h3>
+    <p>只为了在编辑页能跑通预览，选「仅数据集」；希望工具调用方不传值时也有兜底，选「全局生效」。用在 SELECT 里的占位符必须选「全局生效」。</p>
+  </section>
+
+  <footer>参考：Quick BI 占位符文档 · 本控制台实现了 SQL 数据集中的六类占位符，仪表板查询控件、计算字段等场景暂不涉及。</footer>
+</div>
+</body>
+</html>

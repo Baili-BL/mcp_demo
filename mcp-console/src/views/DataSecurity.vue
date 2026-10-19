@@ -3,7 +3,7 @@ import { computed, onDeactivated, ref } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import {
   store, findDataset, findGrant, getOrCreateGrant, saveDatasetGrant,
-  hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, colPolicyColumns, describeColSubject,
+  hydrateRowPolicies, describeRowPolicy, hydrateColPolicies, colPolicyColumns, describeColSubject, rowLeaves,
 } from '../store'
 import RowPermStudio from '../components/RowPermStudio.vue'
 import ColPermStudio from '../components/ColPermStudio.vue'
@@ -57,7 +57,7 @@ function whoText(record) {
 }
 
 function policyFields(p) {
-  return [...new Set((p.blocks || []).flatMap((b) => (b.conditions || []).map((c) => c.column).filter(Boolean)))]
+  return [...new Set(rowLeaves(p).map((c) => c.column).filter(Boolean))]
 }
 
 function rowItems() {

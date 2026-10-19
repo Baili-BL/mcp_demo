@@ -1,11 +1,12 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, provide, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
   store, findDataset, findGrant, getOrCreateGrant, saveDatasetGrant,
-  isMeasureColumn, hydrateRowPolicies, describeRowPolicy,
+  isMeasureColumn, hydrateRowPolicies, describeRowPolicy, rowRoot, rowLeaves,
 } from '../store'
 import DsMark from './icons/DsMark.vue'
+import RowCondGroup from './RowCondGroup.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -121,23 +122,6 @@ function opsOf(cond) {
   if (cond.method === 'enum') return ENUM_OPS
   return measureOf(cond.column) ? MEA_OPS : DIM_OPS
 }
-function samplesOf(name) {
-  const col = colOf(name)
-  const raw = col?.sample_values
-  let list = []
-  if (Array.isArray(raw)) list = raw.map(String)
-  else if (typeof raw === 'string' && raw.trim()) list = raw.split(/[,，]/).map((x) => x.trim()).filter(Boolean)
-  const key = `${name || ''} ${col?.description || ''}`
-  if (!list.length && /区域|地区|大区|region/i.test(key)) list = ['东北', '华北', '华东', '华南', '华中', '西南', '西北']
-  if (!list.length && /frequency|频度/.test(key)) list = ['日', '周', '月', '年']
-  if (!list.length && /unit|单位/.test(key)) list = ['元/吨', '%', '万吨']
-  if (!list.length && /index_code|指标代码/.test(key)) list = ['CU', 'RB', 'SA', 'AL']
-  if (!list.length && /variety|品种/.test(key)) list = ['CU', 'RB', 'SA', 'AL']
-  if (!list.length && /industry|行业/.test(key)) list = ['有色', '黑色', '能化', '农产品']
-  if (!list.length && /warehouse|仓库/.test(key)) list = ['上海', '无锡', '天津']
-  if (!list.length && /team|团队/.test(key)) list = ['数智中心', '有色组', '能化组']
-  return [...new Set(list)]
-}
 function userName(id) {
   return userMap.value.get(id)?.name || id
 }
@@ -153,13 +137,16 @@ function subjectText(p) {
   return '所有成员'
 }
 function fieldsText(p) {
-  const names = [...new Set((p.blocks || []).flatMap((b) => (b.conditions || []).map((c) => c.column).filter(Boolean)))]
+  const names = [...new Set(rowLeaves(p).map((c) => c.column).filter(Boolean))]
   return names.join('、') || '—'
 }
 function visibleText(p) {
-  const join = (p.blocks?.[0]?.join || 'and') === 'or' ? '并集' : '交集'
-  const desc = describeRowPolicy(p)
-  return desc === '未设置筛选' ? desc : `基于以上字段筛选条件取${join}`
+  return describeRowPolicy(p)
+}
+function withRoot(p) {
+  const root = clone(rowRoot(p))
+  if (!root.conditions.length) root.conditions.push(newCond())
+  return { ...clone(p), blocks: [root] }
 }
 
 function hydrate() {
@@ -174,7 +161,7 @@ function hydrate() {
   editing.value = null
   if (props.policyId) {
     const hit = draft.policies.find((p) => p.id === props.policyId)
-    if (hit) editing.value = clone(hit)
+    if (hit) editing.value = withRoot(hit)
   }
 }
 
@@ -194,22 +181,24 @@ function defaultColumn() {
     || ''
 }
 
+function newCond(column) {
+  const c = emptyCond(column || defaultColumn())
+  if (c.column && measureOf(c.column)) {
+    c.method = 'condition'
+    c.op = '='
+  }
+  return c
+}
+
 function startAdd() {
   const n = draft.policies.length + 1
   const p = emptyPolicy(`规则${n}`)
-  const first = defaultColumn()
-  if (first) {
-    p.blocks[0].conditions[0].column = first
-    if (measureOf(first)) {
-      p.blocks[0].conditions[0].method = 'condition'
-      p.blocks[0].conditions[0].op = '='
-    }
-  }
+  p.blocks[0].conditions = [newCond()]
   editing.value = p
 }
 
 function startEdit(p) {
-  editing.value = clone(p)
+  editing.value = withRoot(p)
 }
 
 function cancelEdit() {
@@ -240,44 +229,11 @@ function onMethodChange(cond, method) {
   }
 }
 
-function addCondition(block) {
-  const prev = block.conditions[block.conditions.length - 1]
-  const next = emptyCond(prev?.column || defaultColumn())
-  if (next.column && measureOf(next.column)) {
-    next.method = 'condition'
-    next.op = '='
-  }
-  block.conditions.push(next)
-}
-
-function removeCondition(block, idx) {
-  if (block.conditions.length <= 1) {
-    block.conditions.splice(0, 1, emptyCond(defaultColumn()))
-    return
-  }
-  block.conditions.splice(idx, 1)
-}
-
-function addRelation(policy) {
-  const last = policy.blocks[policy.blocks.length - 1]
-  const col = last?.conditions?.[0]?.column || defaultColumn()
-  policy.blocks.push(emptyBlock(col))
-}
-
-function removeBlock(policy, idx) {
-  if (policy.blocks.length <= 1) return
-  policy.blocks.splice(idx, 1)
-}
-
-function toggleJoin(block) {
-  block.join = block.join === 'and' ? 'or' : 'and'
-}
-function addEnumValue(cond, s) {
-  const v = String(s || '').trim()
-  if (!v) return
-  if (!Array.isArray(cond.values)) cond.values = []
-  if (!cond.values.includes(v)) cond.values.push(v)
-}
+provide('rowCtx', {
+  columns, ENUM_OPS, TAG_KEYS, maxDepth: 4,
+  uid, newCond, measureOf, methodsOf, opsOf,
+  onColumnChange, onMethodChange,
+})
 
 function condValid(c) {
   if (!c.column) return false
@@ -299,7 +255,7 @@ function finishRule() {
     Message.warning('请选择用户组')
     return
   }
-  const ok = (p.blocks || []).some((b) => (b.conditions || []).some(condValid))
+  const ok = rowLeaves(p).some(condValid)
   if (!ok) {
     Message.warning('请设置可见内容筛选条件')
     return
@@ -366,7 +322,7 @@ function reuseFrom(id) {
 <template>
   <a-drawer
     :visible="visible"
-    :width="960"
+    :width="1080"
     :footer="false"
     unmount-on-close
     popup-container="body"
@@ -384,26 +340,27 @@ function reuseFrom(id) {
       </div>
     </template>
     <div class="row-studio">
-      <div class="rs-head-actions in-body">
-        <button type="button" class="link" @click="Message.info('行级权限：为赋权对象配置可见内容筛选，白名单用户不受规则限制。')">查看帮助</button>
-      </div>
-
       <div class="rs-body">
         <div class="rs-toolbar">
           <label class="en">
             <a-switch v-model="draft.enabled" size="small" />
             启用行级权限
           </label>
-          <a-dropdown v-model:popup-visible="reuseOpen" :disabled="!reuseSources.length" @select="reuseFrom">
-            <a-button>
-              <template #icon><icon-copy /></template>
-              规则复用
-            </a-button>
-            <template #content>
-              <a-doption v-for="d in reuseSources" :key="d.id" :value="d.id">{{ d.display_name }}</a-doption>
-              <a-doption v-if="!reuseSources.length" disabled>暂无可复用规则</a-doption>
-            </template>
-          </a-dropdown>
+          <span class="tb-right">
+            <button type="button" class="link" @click="Message.info('行级权限：为赋权对象配置可见内容筛选，白名单用户不受规则限制。')">
+              <icon-question-circle /> 查看帮助
+            </button>
+            <a-dropdown v-model:popup-visible="reuseOpen" :disabled="!reuseSources.length" @select="reuseFrom">
+              <a-button>
+                <template #icon><icon-copy /></template>
+                规则复用
+              </a-button>
+              <template #content>
+                <a-doption v-for="d in reuseSources" :key="d.id" :value="d.id">{{ d.display_name }}</a-doption>
+                <a-doption v-if="!reuseSources.length" disabled>暂无可复用规则</a-doption>
+              </template>
+            </a-dropdown>
+          </span>
         </div>
 
         <div class="rs-subbar">
@@ -484,7 +441,7 @@ function reuseFrom(id) {
         </template>
 
         <section v-else class="card editor">
-          <div class="card-hd">添加规则</div>
+          <div class="card-hd">{{ draft.policies.some((x) => x.id === editing.id) ? '编辑规则' : '添加规则' }}</div>
           <a-input v-model="editing.name" class="name-input" placeholder="给当前规则起个名字方便检索" allow-clear />
           <div class="editor-grid">
             <aside class="aside">
@@ -517,79 +474,13 @@ function reuseFrom(id) {
             </aside>
             <div class="filter-pane">
               <div class="filter-hd">
-                可见内容筛选
-                <span class="muted">切换最外侧关系节点类型时，所有关系都会切换，内外层关系必然相反</span>
+                <strong>可见内容筛选</strong>
+                <span class="filter-tip">
+                  <icon-info-circle />
+                  点击条件右侧 <icon-branch /> 可在该条件的结果中再筛选；点击左侧「且 / 或」切换本组条件间的关系
+                </span>
               </div>
-              <div v-for="(block, bi) in editing.blocks" :key="block.id" class="block">
-                <button type="button" class="join-tog" :title="'单击切换且 / 或'" @click="toggleJoin(block)">
-                  <span>{{ block.join === 'and' ? '且' : '或' }}</span>
-                  <icon-swap />
-                </button>
-                <div class="block-body">
-                  <div v-for="(cond, ci) in block.conditions" :key="cond.id" class="cond">
-                    <span class="lbl">筛选字段</span>
-                    <a-select :model-value="cond.column" allow-search :style="{ width: '160px' }" @change="(v) => onColumnChange(cond, v)">
-                      <a-option v-for="c in columns" :key="c.column_name" :value="c.column_name">
-                        {{ c.column_name }}（{{ measureOf(c.column_name) ? '度量' : '维度' }}）
-                      </a-option>
-                    </a-select>
-                    <span class="lbl">筛选方式</span>
-                    <a-select :model-value="cond.method" :style="{ width: '128px' }" @change="(v) => onMethodChange(cond, v)">
-                      <a-option v-for="m in methodsOf(cond.column)" :key="m.value" :value="m.value">{{ m.label }}</a-option>
-                    </a-select>
-                    <template v-if="cond.method === 'enum'">
-                      <span class="lbl">固定值</span>
-                      <a-select v-model="cond.op" :style="{ width: '88px' }">
-                        <a-option v-for="o in ENUM_OPS" :key="o.value" :value="o.value">{{ o.label }}</a-option>
-                      </a-select>
-                      <div class="enum-box">
-                        <a-input-tag
-                          v-model="cond.values"
-                          allow-clear
-                          unique-value
-                          placeholder="输入后回车添加关键字"
-                        />
-                        <div v-if="samplesOf(cond.column).length" class="enum-hints">
-                          <button
-                            v-for="s in samplesOf(cond.column)"
-                            :key="s"
-                            type="button"
-                            class="hint-chip"
-                            @click="addEnumValue(cond, s)"
-                          >{{ s }}</button>
-                        </div>
-                      </div>
-                    </template>
-                    <template v-else-if="cond.method === 'condition'">
-                      <span class="lbl">固定值</span>
-                      <a-select v-model="cond.op" :style="{ width: '112px' }">
-                        <a-option v-for="o in opsOf(cond)" :key="o.value" :value="o.value">{{ o.label }}</a-option>
-                      </a-select>
-                      <template v-if="cond.op !== 'empty' && cond.op !== 'not_empty'">
-                        <a-input v-model="cond.value" :placeholder="cond.op === 'between' ? '起始值' : '值'" :style="{ width: '120px' }" />
-                        <template v-if="cond.op === 'between'">
-                          <span class="muted">~</span>
-                          <a-input v-model="cond.value2" placeholder="结束值" :style="{ width: '120px' }" />
-                        </template>
-                      </template>
-                    </template>
-                    <template v-else>
-                      <span class="lbl">绑定标签</span>
-                      <a-select v-model="cond.tagKey" :style="{ width: '128px' }">
-                        <a-option v-for="t in TAG_KEYS" :key="t.value" :value="t.value">{{ t.label }}</a-option>
-                      </a-select>
-                    </template>
-                    <a-button v-if="block.conditions.length > 1" type="text" size="mini" status="danger" @click="removeCondition(block, ci)">
-                      <icon-delete />
-                    </a-button>
-                  </div>
-                  <div class="cond-actions">
-                    <a-button type="primary" size="small" @click="addCondition(block)">+ 添加条件</a-button>
-                    <a-button type="primary" size="small" @click="addRelation(editing)">+ 添加关系</a-button>
-                    <a-button v-if="editing.blocks.length > 1" type="text" size="small" status="danger" @click="removeBlock(editing, bi)">删除此关系</a-button>
-                  </div>
-                </div>
-              </div>
+              <RowCondGroup :group="editing.blocks[0]" :depth="0" />
             </div>
           </div>
         </section>
@@ -613,11 +504,6 @@ function reuseFrom(id) {
   margin: -16px -20px -20px;
   color: rgb(12, 13, 14);
 }
-.rs-head-actions.in-body {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 20px 8px;
-}
 .rs-title {
   display: flex;
   align-items: center;
@@ -635,7 +521,6 @@ function reuseFrom(id) {
   font-size: 13px;
 }
 .ds-chip :deep(.ds-mark) { margin-right: 0; }
-.rs-head-actions { display: flex; align-items: center; gap: 12px; }
 .link {
   border: none;
   background: none;
@@ -673,6 +558,8 @@ function reuseFrom(id) {
   font-size: 14px;
 }
 .rs-subbar { justify-content: flex-end; }
+.tb-right { display: inline-flex; align-items: center; gap: 16px; }
+.tb-right .link { display: inline-flex; align-items: center; gap: 4px; }
 .other {
   display: inline-flex;
   align-items: center;
@@ -749,68 +636,29 @@ function reuseFrom(id) {
 .name-input { margin-bottom: 16px; }
 .editor-grid {
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 16px;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 20px;
   min-height: 320px;
 }
 .aside {
   border-right: 1px solid #f2f3f5;
-  padding-right: 16px;
+  padding-right: 18px;
 }
 .aside-title { font-weight: 600; margin-bottom: 10px; }
 .filter-hd {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 12px;
-  font-weight: 600;
-}
-.filter-hd .muted { font-weight: 400; }
-.block {
-  display: grid;
-  grid-template-columns: 36px 1fr;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.join-tog {
-  display: flex;
   flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.filter-tip {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
-  border: none;
-  background: none;
-  color: rgb(22, 100, 255);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0;
-}
-.block-body {
-  border-left: 1px solid #c9cdd4;
-  padding: 4px 0 4px 12px;
-}
-.cond {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.lbl { color: #4e5969; font-size: 13px; }
-.cond-actions { display: flex; gap: 8px; margin-top: 4px; }
-.enum-box { flex: 1; min-width: 200px; }
-.enum-hints { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.hint-chip {
-  border: 1px dashed #c9cdd4;
-  background: #fff;
-  color: #4e5969;
-  border-radius: 4px;
-  padding: 0 8px;
-  height: 24px;
+  gap: 4px;
   font-size: 12px;
-  cursor: pointer;
+  color: #86909c;
 }
-.hint-chip:hover { border-color: rgb(22, 100, 255); color: rgb(22, 100, 255); }
+.filter-pane { min-width: 0; }
 .rs-foot {
   display: flex;
   justify-content: flex-end;

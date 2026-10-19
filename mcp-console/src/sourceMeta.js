@@ -1,3 +1,5 @@
+import { placeholderToolParams } from './placeholders.js'
+
 function col(name, type, comment = '') {
   return { name, type, comment }
 }
@@ -527,7 +529,23 @@ export function createModeledDataset(store, { name, sourceId, tables, fields, fo
   return { dataset: pushCreatedDataset(store, dataset) }
 }
 
-export function createSqlDataset(store, { name, sourceId, sql, columns, folderId }) {
+function clonePlaceholders(list) {
+  return (list || []).map((p) => ({
+    id: p.id,
+    kind: p.kind,
+    name: p.name,
+    fields: [...(p.fields || [])],
+    varType: p.varType,
+    scope: p.scope,
+    defaultValue: p.defaultValue ?? '',
+    range: !!p.range,
+    inSelect: !!p.inSelect,
+    manual: !!p.manual,
+    used: p.used !== false,
+  }))
+}
+
+export function createSqlDataset(store, { name, sourceId, sql, columns, folderId, placeholders }) {
   const text = String(sql || '').trim()
   if (!sourceId) return { error: '请先选择一个数据源' }
   if (!/^\s*select\b/i.test(text)) return { error: 'SQL 数据集仅支持 SELECT 查询' }
@@ -548,7 +566,7 @@ export function createSqlDataset(store, { name, sourceId, sql, columns, folderId
     is_enabled: true,
     source_type: 'sql',
     sql: text,
-    extra: { source_kind: 'sql', sql: text },
+    extra: { source_kind: 'sql', sql: text, placeholders: clonePlaceholders(placeholders) },
     folder_id: folderId || ROOT_FOLDER_ID,
     creator_id: 'u-admin',
     modifier_id: 'u-admin',
@@ -570,7 +588,7 @@ export function createSqlDataset(store, { name, sourceId, sql, columns, folderId
   return { dataset: pushCreatedDataset(store, dataset) }
 }
 
-function applySqlFields(dataset, { name, sourceId, sql, columns }) {
+function applySqlFields(dataset, { name, sourceId, sql, columns, placeholders }) {
   const text = String(sql || '').trim()
   if (!sourceId) return '请先选择一个数据源'
   if (!/^\s*select\b/i.test(text)) return 'SQL 数据集仅支持 SELECT 查询'
@@ -585,7 +603,12 @@ function applySqlFields(dataset, { name, sourceId, sql, columns }) {
   dataset.description = text
   dataset.sql = text
   dataset.source_type = 'sql'
-  dataset.extra = { ...(dataset.extra || {}), source_kind: 'sql', sql: text }
+  dataset.extra = {
+    ...(dataset.extra || {}),
+    source_kind: 'sql',
+    sql: text,
+    placeholders: placeholders !== undefined ? clonePlaceholders(placeholders) : (dataset.extra?.placeholders || []),
+  }
   dataset.columns = names.map((n, i) => ({
     id: typeof n === 'string' ? `col-sql-${dataset.id}-${i}` : (n.id || `col-sql-${dataset.id}-${i}`),
     column_name: typeof n === 'string' ? n : n.column_name,
@@ -945,15 +968,42 @@ function policyAppliesToUser(p, user) {
   return false
 }
 
+export function isRowGroup(node) {
+  return !!node && Array.isArray(node.conditions)
+}
+
+export function rowRoot(p) {
+  const blocks = p?.blocks || []
+  if (blocks.length === 1) return blocks[0]
+  if (!blocks.length) return { id: 'root', join: 'and', conditions: [] }
+  return { id: blocks[0].id, join: 'and', conditions: blocks }
+}
+
+export function rowLeaves(p) {
+  const out = []
+  const walk = (g) => (g.conditions || []).forEach((n) => {
+    if (isRowGroup(n)) return walk(n)
+    out.push(n)
+    if (n.sub) walk(n.sub)
+  })
+  walk(rowRoot(p))
+  return out
+}
+
+function leafSql(n, user) {
+  const own = condToSql(n, user)
+  const sub = n.sub ? groupSql(n.sub, user) : ''
+  return own && sub ? `(${own} AND ${sub})` : own || sub
+}
+
+function groupSql(g, user) {
+  const parts = (g.conditions || []).map((n) => (isRowGroup(n) ? groupSql(n, user) : leafSql(n, user))).filter(Boolean)
+  if (!parts.length) return ''
+  return parts.length === 1 ? parts[0] : `(${parts.join(` ${(g.join || 'and').toUpperCase()} `)})`
+}
+
 function compilePolicySql(p, user) {
-  const blockSqls = (p.blocks || []).map((b) => {
-    const parts = (b.conditions || []).map((c) => condToSql(c, user)).filter(Boolean)
-    if (!parts.length) return ''
-    const j = (b.join || 'and').toUpperCase()
-    return parts.length === 1 ? parts[0] : `(${parts.join(` ${j} `)})`
-  }).filter(Boolean)
-  if (!blockSqls.length) return ''
-  return blockSqls.length === 1 ? blockSqls[0] : `(${blockSqls.join(' AND ')})`
+  return groupSql(rowRoot(p), user)
 }
 
 export function compileGrantRowFilter(grant, userId, users = []) {
@@ -988,27 +1038,25 @@ export function compileGrantRowFilter(grant, userId, users = []) {
 export function flattenPoliciesToRules(policies) {
   const rules = []
   for (const p of policies || []) {
-    for (const b of p.blocks || []) {
-      for (const c of b.conditions || []) {
-        if (!c.column) continue
-        const value = c.method === 'enum'
-          ? (c.values || []).join(',')
-          : c.method === 'tag'
-            ? `{{user.${c.tagKey || 'team'}}}`
-            : (c.op === 'between' ? `${c.value},${c.value2 || ''}` : c.value)
-        if (c.method !== 'tag' && !String(value || '').trim()) continue
-        rules.push({
-          name: p.name,
-          column: c.column,
-          op: c.method === 'enum' ? ((c.op === 'not_in' || c.op === 'not_contains') ? '!=' : 'in') : (c.op || '='),
-          value,
-          users: p.subject === 'users' ? [...(p.users || [])] : [],
-          groups: p.subject === 'groups' ? [...(p.groups || [])] : [],
-          subject: p.subject || 'all',
-          method: c.method,
-          on: p.on !== false,
-        })
-      }
+    for (const c of rowLeaves(p)) {
+      if (!c.column) continue
+      const value = c.method === 'enum'
+        ? (c.values || []).join(',')
+        : c.method === 'tag'
+          ? `{{user.${c.tagKey || 'team'}}}`
+          : (c.op === 'between' ? `${c.value},${c.value2 || ''}` : c.value)
+      if (c.method !== 'tag' && !String(value || '').trim()) continue
+      rules.push({
+        name: p.name,
+        column: c.column,
+        op: c.method === 'enum' ? ((c.op === 'not_in' || c.op === 'not_contains') ? '!=' : 'in') : (c.op || '='),
+        value,
+        users: p.subject === 'users' ? [...(p.users || [])] : [],
+        groups: p.subject === 'groups' ? [...(p.groups || [])] : [],
+        subject: p.subject || 'all',
+        method: c.method,
+        on: p.on !== false,
+      })
     }
   }
   return rules
@@ -1099,9 +1147,21 @@ export function describeRowCondition(c) {
   return `${c.column} ${labels[op] || op} ${c.value || ''}`
 }
 
+function describeLeaf(n) {
+  const own = describeRowCondition(n)
+  const sub = n.sub ? describeGroup(n.sub, true) : ''
+  return own && sub ? `（${own} 且 ${sub}）` : own || sub
+}
+
+function describeGroup(g, nested) {
+  const parts = (g.conditions || []).map((n) => (isRowGroup(n) ? describeGroup(n, true) : describeLeaf(n))).filter(Boolean)
+  if (!parts.length) return ''
+  const text = parts.join(g.join === 'or' ? ' 或 ' : ' 且 ')
+  return nested && parts.length > 1 ? `（${text}）` : text
+}
+
 export function describeRowPolicy(p) {
-  const parts = (p?.blocks || []).flatMap((b) => (b.conditions || []).map(describeRowCondition)).filter(Boolean)
-  return parts.join((p?.blocks?.[0]?.join || 'and') === 'or' ? ' 或 ' : ' 且 ') || '未设置筛选'
+  return describeGroup(rowRoot(p), false) || '未设置筛选'
 }
 
 export function colPolicyApplies(p, user, userId) {
@@ -1315,6 +1375,10 @@ function buildToolSchema(dataset, grant, filterFields) {
   const properties = {}
   cols.filter((c) => filters.has(c.column_name)).forEach((c) => {
     properties[c.column_name] = schemaPropFromColumn(c)
+  })
+  const phProps = placeholderToolParams(dataset.extra?.placeholders)
+  Object.entries(phProps).forEach(([k, v]) => {
+    if (!properties[k]) properties[k] = v
   })
   properties.limit = { type: 'integer', default: 500, description: '最大行数，上限 5000' }
   return {

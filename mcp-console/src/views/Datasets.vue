@@ -4,7 +4,7 @@ import { Message, Modal } from '@arco-design/web-vue'
 import {
   store, findSource, findGrant, getOrCreateGrant, previewDataset,
   saveDatasetGrant, toolsOfDataset, readerToolsOfDataset, readRequestsOf, forgetDatasets, isReadControlled, colPolicyColumns,
-  ROOT_FOLDER_ID, folderPath, flattenFolders, folderChildren, findFolder,
+  ROOT_FOLDER_ID, folderPath, flattenFolders, folderChildren, findFolder, rowLeaves,
 } from '../store'
 import SchemaExplorer from '../components/SchemaExplorer.vue'
 import PublishToolModal from '../components/PublishToolModal.vue'
@@ -591,7 +591,7 @@ function hasRowAcl(d) {
   const g = grantOf(d)
   if (!g?.row_enabled) return false
   if (g.row_filter) return true
-  if ((g.row_policies || []).some((p) => (p.blocks || []).some((b) => (b.conditions || []).some((c) => c.column)))) return true
+  if ((g.row_policies || []).some((p) => rowLeaves(p).some((c) => c.column))) return true
   return (g.row_rules || []).some((r) => r.column && String(r.value || '').trim())
 }
 function hasColAcl(d) {

@@ -222,7 +222,7 @@ function reuseFrom(id) {
 <template>
   <a-drawer
     :visible="visible"
-    :width="960"
+    :width="1080"
     :footer="false"
     unmount-on-close
     popup-container="body"
@@ -240,26 +240,27 @@ function reuseFrom(id) {
       </div>
     </template>
     <div class="col-studio">
-      <div class="cs-head-actions in-body">
-        <button type="button" class="link" @click="Message.info('列级权限用于禁止查看或脱敏指定字段，并可按用户 / 用户组控制生效范围。白名单用户不受规则限制。')">查看帮助</button>
-      </div>
-
       <div class="cs-body">
         <div class="cs-toolbar">
           <label class="en">
             <a-switch :model-value="draft.enabled" size="small" @change="onEnable" />
             启用列级权限
           </label>
-          <a-dropdown v-model:popup-visible="reuseOpen" @select="reuseFrom">
-            <a-button>
-              <template #icon><icon-copy /></template>
-              规则复用
-            </a-button>
-            <template #content>
-              <a-doption v-for="d in reuseSources" :key="d.id" :value="d.id">{{ d.display_name }}</a-doption>
-              <a-doption v-if="!reuseSources.length" disabled>暂无可复用规则</a-doption>
-            </template>
-          </a-dropdown>
+          <span class="tb-right">
+            <button type="button" class="link" @click="Message.info('列级权限用于禁止查看或脱敏指定字段，并可按用户 / 用户组控制生效范围。白名单用户不受规则限制。')">
+              <icon-question-circle /> 查看帮助
+            </button>
+            <a-dropdown v-model:popup-visible="reuseOpen" @select="reuseFrom">
+              <a-button>
+                <template #icon><icon-copy /></template>
+                规则复用
+              </a-button>
+              <template #content>
+                <a-doption v-for="d in reuseSources" :key="d.id" :value="d.id">{{ d.display_name }}</a-doption>
+                <a-doption v-if="!reuseSources.length" disabled>暂无可复用规则</a-doption>
+              </template>
+            </a-dropdown>
+          </span>
         </div>
 
         <section v-if="!draft.enabled" class="intro">
@@ -471,11 +472,6 @@ function reuseFrom(id) {
   margin: -16px -20px -20px;
   color: rgb(12, 13, 14);
 }
-.cs-head-actions.in-body {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 20px 8px;
-}
 .cs-title { display: flex; align-items: center; gap: 10px; font-size: 16px; }
 .ds-chip {
   display: inline-flex;
@@ -488,7 +484,8 @@ function reuseFrom(id) {
   font-size: 13px;
 }
 .ds-chip :deep(.ds-mark) { margin-right: 0; }
-.cs-head-actions { display: flex; align-items: center; gap: 12px; }
+.tb-right { display: inline-flex; align-items: center; gap: 16px; }
+.tb-right .link { display: inline-flex; align-items: center; gap: 4px; }
 .link {
   border: none;
   background: none;
@@ -546,11 +543,11 @@ function reuseFrom(id) {
 .pol-table th { color: #86909c; font-weight: 500; }
 .editor-grid {
   display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: 16px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 20px;
   min-height: 280px;
 }
-.aside { border-right: 1px solid #f2f3f5; padding-right: 16px; }
+.aside { border-right: 1px solid #f2f3f5; padding-right: 20px; }
 .aside-title { font-weight: 600; margin-bottom: 12px; }
 .field-block { margin-bottom: 16px; }
 .lbl { color: #4e5969; font-size: 13px; margin-bottom: 8px; }

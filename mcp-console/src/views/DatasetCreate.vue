@@ -2,9 +2,15 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { store, isDbKind, previewSql, createModeledDataset, createSqlDataset, updateModeledDataset, updateSqlDataset, compileModelSql } from '../store'
+import {
+  PH_KINDS, VAR_TYPES, SYSTEM_VARS, USER_TAGS, DEFAULT_SCOPES,
+  kindLabel, phKey, mergePlaceholders, newManualPlaceholder, placeholderToken,
+  renamePlaceholderInSql, removePlaceholderFromSql, validatePlaceholders, renderSql,
+} from '../placeholders'
+import { formatSql as formatSqlText } from '../sqlFormat'
+import SqlEditor from '../components/SqlEditor.vue'
 import SqlIcon1 from '../components/icons/sql/Icon1.vue'
 import SqlIcon2 from '../components/icons/sql/Icon2.vue'
-import SqlIcon3 from '../components/icons/sql/Icon3.vue'
 import SqlIcon4 from '../components/icons/sql/Icon4.vue'
 import SqlIcon5 from '../components/icons/sql/Icon5.vue'
 import SqlIcon6 from '../components/icons/sql/Icon6.vue'
@@ -59,10 +65,16 @@ const leftFieldKw = ref('')
 const rightFieldKw = ref('')
 const sqlExpanded = ref(false)
 const helpOpen = ref(false)
-const hintOpen = ref(false)
-const hintText = ref('')
 const phOpen = ref(false)
-const phName = ref('param')
+const placeholders = ref([])
+const phDraft = ref([])
+const phNewOpen = ref(false)
+const phSyntaxOpen = ref(false)
+const phForm = reactive({ kind: 'val', name: '', fields: [], varType: 'text', scope: 'global', defaultValue: '' })
+const previewUserId = ref(store.users.find((u) => u.status === '正常')?.id || '')
+const execSql = ref('')
+const execNotes = ref([])
+const sqlEditorEl = ref(null)
 const filterOpen = ref(false)
 const filterHelpOpen = ref(false)
 const datasetFilters = ref([])
@@ -90,10 +102,11 @@ function resetBlank(mode) {
   rightFieldKw.value = ''
   sqlExpanded.value = false
   helpOpen.value = false
-  hintOpen.value = false
-  hintText.value = ''
   phOpen.value = false
-  phName.value = 'param'
+  placeholders.value = []
+  phNewOpen.value = false
+  execSql.value = ''
+  execNotes.value = []
   filterOpen.value = false
   filterHelpOpen.value = false
   datasetFilters.value = []
@@ -108,6 +121,7 @@ function loadEdit() {
   if (d.source_type === 'sql') {
     enteredAsSql.value = true
     step.value = 'sql'
+    placeholders.value = mergePlaceholders(d.sql || d.extra?.sql || '', d.extra?.placeholders || [])
     sqlText.value = d.sql || d.extra?.sql || ''
     sqlResult.value = null
     sqlMessage.value = ''
@@ -464,38 +478,136 @@ function insertTableSql(table) {
   sqlText.value = `${prefix}SELECT *\nFROM ${tableName}\nLIMIT 100`
 }
 
-function formatSql() {
-  sqlText.value = sqlText.value
-    .replace(/\s+/g, ' ')
-    .replace(/\s*(SELECT|FROM|WHERE|GROUP BY|ORDER BY|LIMIT)\s+/gi, '\n$1 ')
-    .trim()
-}
-
-const sqlPlaceholders = computed(() => {
-  const found = new Set()
-  for (const m of String(sqlText.value || '').matchAll(/\$\{(\w+)\}|:(\w+)\b/g)) {
-    found.add(m[1] || m[2])
-  }
-  return [...found]
+const sqlDialect = computed(() => store.sources.find((s) => s.id === sourceId.value)?.kind === 'oracle' ? 'oracle' : 'mysql')
+const sqlSchema = computed(() => {
+  const out = {}
+  store.datasets.forEach((d) => {
+    if (d.data_source_id !== sourceId.value || d.source_type === 'sql' || d.extra?.model) return
+    const table = d.table_name || d.display_name
+    if (table) out[table] = (d.columns || []).map((c) => c.column_name)
+  })
+  return out
 })
 
-function applyHint() {
-  const h = hintText.value.trim()
-  const body = String(sqlText.value || '').split('\n').filter((l) => !l.startsWith('-- HINT:')).join('\n').trim()
-  sqlText.value = h ? `-- HINT: ${h}\n${body}` : body
-  hintOpen.value = false
+function formatSql() {
+  if (!sqlText.value.trim()) return
+  const { sql, error } = formatSqlText(sqlText.value, sqlDialect.value)
+  if (error) {
+    Message.warning(`格式化失败：${error}`)
+    return
+  }
+  sqlText.value = sql
 }
 
-function insertPlaceholder() {
-  const key = String(phName.value || 'param').trim().replace(/[^\w]/g, '') || 'param'
-  const token = `\${${key}}`
-  sqlText.value = `${sqlText.value || ''}${sqlText.value && !/\s$/.test(sqlText.value) ? ' ' : ''}${token}`
+watch(sqlText, (v) => {
+  placeholders.value = mergePlaceholders(v, placeholders.value)
+})
+
+const phCheck = computed(() => validatePlaceholders(placeholders.value))
+const phDraftCheck = computed(() => validatePlaceholders(phDraft.value))
+const previewUser = computed(() => store.users.find((u) => u.id === previewUserId.value) || null)
+const needsIdentity = computed(() => placeholders.value.some((p) => p.used && (p.kind === 'tag' || p.kind === 'system')))
+const sourceColumns = computed(() => {
+  const names = new Set()
+  sourceTables.value.forEach((t) => (t.columns || []).forEach((c) => names.add(c.column_name)))
+  return [...names]
+})
+
+function openPlaceholders() {
+  placeholders.value = mergePlaceholders(sqlText.value, placeholders.value)
+  phDraft.value = placeholders.value.map((p) => ({ ...p, fields: [...(p.fields || [])], _name: p.name }))
+  phOpen.value = true
+}
+
+function savePlaceholders() {
+  if (phDraftCheck.value.errors.length) {
+    Message.warning(phDraftCheck.value.errors[0])
+    return false
+  }
+  let sql = sqlText.value
+  for (const p of phDraft.value) {
+    const next = String(p.name || '').trim()
+    if (!next) {
+      Message.warning('变量名不能为空')
+      return false
+    }
+    if (next !== p._name && p.used) sql = renamePlaceholderInSql(sql, { ...p, name: p._name }, next)
+  }
+  const kept = phDraft.value.map(({ _name, ...rest }) => ({ ...rest, name: String(rest.name).trim() }))
+  placeholders.value = mergePlaceholders(sql, kept.map((p) => ({ ...p, manual: p.manual || !p.used })))
+  sqlText.value = sql
   phOpen.value = false
+  Message.success('占位符已更新')
+  return true
+}
+
+function removeDraftPlaceholder(p) {
+  phDraft.value = phDraft.value.filter((x) => x !== p)
+  if (p.used) {
+    const next = removePlaceholderFromSql(sqlText.value, { ...p, name: p._name })
+    if (next !== sqlText.value) {
+      sqlText.value = next
+      Message.info(`已把 SQL 中的「${p._name}」替换为 1=1`)
+    } else {
+      Message.info('SQL 中仍引用该占位符，删除后会在下次识别时重新出现，请同时修改 SQL')
+    }
+  }
+}
+
+function openNewPlaceholder() {
+  Object.assign(phForm, { kind: 'val', name: '', fields: [], varType: 'text', scope: 'global', defaultValue: '' })
+  phNewOpen.value = true
+}
+
+function createPlaceholder() {
+  const name = String(phForm.name || '').trim()
+  if (!name) {
+    Message.warning('请输入变量名')
+    return false
+  }
+  if (/[{}:,\s.]/.test(name)) {
+    Message.warning('变量名不能包含空格、点、逗号、冒号或花括号')
+    return false
+  }
+  if (['expr', 'accel', 'condition'].includes(phForm.kind) && !phForm.fields.length) {
+    Message.warning('请选择物理字段')
+    return false
+  }
+  if (phForm.kind === 'accel' && phDraft.value.some((p) => p.kind === 'accel')) {
+    Message.warning('每个数据集仅支持 1 个加速占位符')
+    return false
+  }
+  if (phDraft.value.some((p) => phKey(p) === `${phForm.kind}:${name}`)) {
+    Message.warning('已存在同名同类型的占位符')
+    return false
+  }
+  const p = newManualPlaceholder({ ...phForm, name, fields: [...phForm.fields] })
+  phDraft.value = [...phDraft.value, { ...p, _name: name }]
+  phNewOpen.value = false
+  return true
+}
+
+function insertToken(p) {
+  const token = placeholderToken(p)
+  nextTick(() => sqlEditorEl.value?.insertAtCursor(token))
+  Message.success(`已插入 ${token}`)
+}
+
+function insertFromDraft(p) {
+  if (!savePlaceholders()) return
+  insertToken({ ...p, name: String(p.name).trim() })
 }
 
 function runSql() {
   const started = Date.now()
-  const result = previewSql(store, { data_source_id: sourceId.value, sql: sqlText.value, limit: 100 })
+  const check = validatePlaceholders(placeholders.value)
+  const rendered = renderSql(sqlText.value, placeholders.value, { user: previewUser.value, groups: store.userGroups })
+  execSql.value = rendered.sql
+  execNotes.value = rendered.notes
+  const blocker = check.errors[0] || rendered.errors[0]
+  const result = blocker
+    ? { error: blocker }
+    : previewSql(store, { data_source_id: sourceId.value, sql: rendered.sql, limit: 100 })
   const duration = Date.now() - started
   if (result.error) {
     sqlResult.value = null
@@ -511,11 +623,18 @@ function runSql() {
 
 function finish() {
   if (isSql.value) {
+    const check = validatePlaceholders(placeholders.value)
+    if (check.errors.length) {
+      Message.warning(check.errors[0])
+      openPlaceholders()
+      return
+    }
     const payload = {
       name: name.value,
       sourceId: sourceId.value,
       sql: sqlText.value,
       columns: sqlResult.value?.columns,
+      placeholders: placeholders.value,
     }
     const { error, dataset } = store.editDatasetId
       ? updateSqlDataset(store, store.editDatasetId, payload)
@@ -597,17 +716,14 @@ const finishLabel = computed(() => {
           <SqlIcon2 :size="16" />
           常见问题
         </button>
-        <button type="button" class="sql-outline-btn muted-outline" @click="hintOpen = true">
-          <SqlIcon3 :size="14" />
-          设置HINT语句
-        </button>
         <button type="button" class="sql-outline-btn" @click="formatSql">
           <SqlIcon4 :size="16" />
           格式化
         </button>
-        <button type="button" class="sql-outline-btn" @click="phOpen = true">
+        <button type="button" class="sql-outline-btn" @click="openPlaceholders">
           <SqlIcon5 :size="16" />
           占位符管理
+          <span v-if="placeholders.length" class="ph-count" :class="{ bad: phCheck.errors.length }">{{ placeholders.length }}</span>
         </button>
         <button type="button" class="sql-primary-btn" @click="runSql">
           <SqlIcon6 :size="16" />
@@ -881,11 +997,35 @@ const finishLabel = computed(() => {
         </div>
       </aside>
       <section class="sql-main">
-        <textarea v-model="sqlText" class="sql-editor mono" placeholder="SELECT * FROM table_name LIMIT 100" />
+        <SqlEditor
+          ref="sqlEditorEl"
+          v-model="sqlText"
+          class="sql-editor"
+          :dialect="sqlDialect"
+          :schema="sqlSchema"
+          placeholder="SELECT * FROM table_name LIMIT 100"
+          @run="runSql"
+          @format="formatSql"
+        />
         <div class="sql-result">
-          <div class="side-tabs" style="padding: 0 16px">
+          <div class="side-tabs result-tabs" style="padding: 0 16px">
             <button type="button" :class="{ on: sqlTab === 'result' }" @click="sqlTab = 'result'">运行结果</button>
+            <button type="button" :class="{ on: sqlTab === 'exec' }" @click="sqlTab = 'exec'">实际执行 SQL</button>
             <button type="button" :class="{ on: sqlTab === 'history' }" @click="sqlTab = 'history'">历史记录</button>
+            <span class="tab-gap" />
+            <label v-if="needsIdentity" class="preview-as">
+              预览身份
+              <a-select v-model="previewUserId" size="mini" :style="{ width: '150px' }" allow-search>
+                <a-option v-for="u in store.users" :key="u.id" :value="u.id">{{ u.name }} · {{ u.team || u.role }}</a-option>
+              </a-select>
+            </label>
+          </div>
+          <div v-if="sqlTab === 'exec'" class="sql-pad">
+            <div v-if="!execSql" class="muted" style="text-align:center; padding: 32px 0">运行后，这里展示占位符替换后的 SQL。</div>
+            <template v-else>
+              <div v-for="n in execNotes" :key="n" class="exec-note">{{ n }}</div>
+              <pre class="exec-sql mono">{{ execSql }}</pre>
+            </template>
           </div>
           <div v-if="sqlTab === 'history'" class="sql-pad">
             <div v-if="!sqlHistory.length" class="muted" style="text-align:center; padding: 32px 0">运行 SQL 后会在这里记录执行状态。</div>
@@ -895,7 +1035,7 @@ const finishLabel = computed(() => {
               <span>{{ h.success ? `${h.rows} 行 · ${h.duration}ms` : h.message }}</span>
             </div>
           </div>
-          <div v-else class="sql-pad">
+          <div v-else-if="sqlTab === 'result'" class="sql-pad">
             <div v-if="!sqlResult" class="muted" style="text-align:center; padding: 32px 0">{{ sqlMessage || '编辑完代码后，点击上方运行即可查看结果。' }}</div>
             <template v-else>
               <div class="ok" style="margin-bottom: 8px">{{ sqlMessage }}</div>
@@ -918,23 +1058,185 @@ const finishLabel = computed(() => {
       <ul class="sql-help">
         <li>SQL 数据集仅支持 SELECT 查询，运行后按当前数据源抽样预览。</li>
         <li>点击左侧数据表可插入 <span class="mono">SELECT * FROM 表名 LIMIT 100</span>。</li>
-        <li>查询参数用 <span class="mono">{{ '${param}' }}</span> 或 <span class="mono">:param</span> 作为占位符。</li>
-        <li>HINT 会以注释写在 SQL 顶部，便于说明优化意图。</li>
+        <li>
+          支持值 <span class="mono">{{ "'$val{name}'" }}</span>、表达式 <span class="mono">{{ '$expr{字段:name}' }}</span>、条件、加速、标签、系统六类占位符，在「占位符管理」里设置变量类型和默认值。
+        </li>
       </ul>
       <div style="text-align:right; margin-top: 16px">
         <a-button type="primary" @click="helpOpen = false">知道了</a-button>
       </div>
     </a-modal>
-
-    <a-modal v-model:visible="hintOpen" title="设置HINT语句" :width="480" unmount-on-close ok-text="写入 SQL" @ok="applyHint">
-      <p class="hint" style="margin-top:0">写入后会放在 SQL 顶部，以 <span class="mono">-- HINT:</span> 注释保存。</p>
-      <a-textarea v-model="hintText" placeholder="如 USE INDEX (idx_date)" :auto-size="{ minRows: 3, maxRows: 6 }" />
-    </a-modal>
-
-    <a-modal v-model:visible="phOpen" title="占位符管理" :width="480" unmount-on-close ok-text="插入" @ok="insertPlaceholder">
-      <p class="hint" style="margin-top:0">用 <span class="mono">{{ '${name}' }}</span> 作为查询参数。已识别：{{ sqlPlaceholders.length ? sqlPlaceholders.join('、') : '暂无' }}</p>
-      <a-input v-model="phName" placeholder="参数名，如 start_date" />
-    </a-modal>
+    <a-drawer
+      v-model:visible="phOpen"
+      :width="980"
+      unmount-on-close
+      ok-text="确定"
+      class="ph-drawer"
+      :on-before-ok="savePlaceholders"
+    >
+      <template #title>
+        占位符管理
+        <span class="ph-title-count">{{ phDraft.length }} 个</span>
+      </template>
+      <div class="ph-bar">
+        <span class="hint">系统自动识别 SQL 中的占位符，可修改变量类型和查询默认值；也可以手动新建后插入到光标处。</span>
+        <a-space>
+          <a-link href="/docs/placeholder.html" target="_blank">使用说明</a-link>
+          <a-button size="small" @click="phSyntaxOpen = !phSyntaxOpen">{{ phSyntaxOpen ? '收起语法' : '语法说明' }}</a-button>
+          <a-button size="small" type="primary" :disabled="phNewOpen" @click="openNewPlaceholder"><template #icon><icon-plus /></template>新建占位符</a-button>
+        </a-space>
+      </div>
+      <section v-if="phNewOpen" class="ph-new">
+        <div class="ph-new-hd">
+          新建占位符
+          <span class="muted tiny">{{ PH_KINDS.find((k) => k.value === phForm.kind)?.desc }}</span>
+        </div>
+        <div class="ph-new-grid">
+          <label>
+            <span>类型</span>
+            <a-select v-model="phForm.kind" size="small" @change="(k) => { phForm.scope = k === 'accel' ? 'dataset' : 'global'; phForm.varType = k === 'accel' ? 'date' : 'text'; phForm.fields = []; phForm.name = k === 'system' ? 'accountName' : k === 'tag' ? USER_TAGS[0] : '' }">
+              <a-option v-for="k in PH_KINDS" :key="k.value" :value="k.value">{{ k.label }}</a-option>
+            </a-select>
+          </label>
+          <label>
+            <span>{{ phForm.kind === 'tag' ? '用户标签' : phForm.kind === 'system' ? '系统变量' : '变量名' }}</span>
+            <a-select v-if="phForm.kind === 'system'" v-model="phForm.name" size="small">
+              <a-option v-for="s in SYSTEM_VARS" :key="s.value" :value="s.value">{{ s.value }} · {{ s.label }}</a-option>
+            </a-select>
+            <a-select v-else-if="phForm.kind === 'tag'" v-model="phForm.name" size="small" allow-create>
+              <a-option v-for="t in USER_TAGS" :key="t" :value="t">{{ t }}</a-option>
+            </a-select>
+            <a-input v-else v-model="phForm.name" size="small" placeholder="如 report_date、area_ph" />
+          </label>
+          <label v-if="['expr', 'accel', 'condition'].includes(phForm.kind)" class="span2">
+            <span>{{ phForm.kind === 'condition' ? '物理字段（按层级顺序，最多 10 个）' : '物理字段' }}</span>
+            <a-select v-if="phForm.kind === 'condition'" v-model="phForm.fields" size="small" multiple :limit="10" allow-search allow-create placeholder="选择或输入字段名">
+              <a-option v-for="c in sourceColumns" :key="c" :value="c">{{ c }}</a-option>
+            </a-select>
+            <a-select
+              v-else
+              :model-value="phForm.fields[0] || ''"
+              size="small"
+              allow-search
+              allow-create
+              placeholder="选择或输入字段名"
+              @change="(v) => { phForm.fields = v ? [v] : [] }"
+            >
+              <a-option v-for="c in sourceColumns" :key="c" :value="c">{{ c }}</a-option>
+            </a-select>
+          </label>
+          <template v-if="phForm.kind !== 'tag' && phForm.kind !== 'system'">
+            <label>
+              <span>变量类型</span>
+              <a-select v-model="phForm.varType" size="small">
+                <a-option v-for="t in VAR_TYPES" :key="t.value" :value="t.value">{{ t.label }}</a-option>
+              </a-select>
+            </label>
+            <label class="span2">
+              <span>查询默认值</span>
+              <div class="ph-default">
+                <a-select v-model="phForm.scope" size="small" :style="{ width: '110px' }" :disabled="phForm.kind === 'accel'">
+                  <a-option v-for="s in DEFAULT_SCOPES" :key="s.value" :value="s.value">{{ s.label }}</a-option>
+                </a-select>
+                <a-input v-model="phForm.defaultValue" size="small" :max-length="150" show-word-limit allow-clear placeholder="选填" />
+              </div>
+            </label>
+          </template>
+        </div>
+        <div class="ph-new-ft">
+          <span class="muted tiny">写入 SQL 后：<span class="mono">{{ placeholderToken({ ...phForm, name: phForm.name || 'name' }) }}</span></span>
+          <a-space>
+            <a-button size="small" @click="phNewOpen = false">取消</a-button>
+            <a-button size="small" type="primary" @click="createPlaceholder">添加</a-button>
+          </a-space>
+        </div>
+      </section>
+      <div v-if="phSyntaxOpen" class="ph-syntax">
+        <div v-for="k in PH_KINDS" :key="k.value" class="ph-syn-row">
+          <span class="ph-kind" :class="`k-${k.value}`">{{ k.label }}</span>
+          <span class="mono">{{ k.syntax }}</span>
+          <span class="muted">{{ k.desc }}</span>
+        </div>
+        <div class="ph-syn-row">
+          <span class="ph-kind k-system">系统变量</span>
+          <span class="muted">{{ SYSTEM_VARS.map((s) => `${s.value}（${s.label}）`).join('、') }}</span>
+        </div>
+        <div class="ph-syn-row">
+          <span class="ph-kind k-tag">用户标签</span>
+          <span class="muted">{{ USER_TAGS.join('、') }}（取自用户管理中的团队、角色、用户组、身份）</span>
+        </div>
+      </div>
+      <a-table :data="phDraft" :pagination="false" size="small" row-key="id" :scroll="{ y: 360 }">
+        <template #empty>
+          <div class="muted" style="padding: 24px 0">SQL 中还没有占位符。可点击「新建占位符」，或在 SQL 中写入 <span class="mono">{{ "'$val{name}'" }}</span>。</div>
+        </template>
+        <template #columns>
+          <a-table-column title="变量名" :width="170">
+            <template #cell="{ record }">
+              <a-input v-model="record.name" size="small" :disabled="record.kind === 'system'" />
+            </template>
+          </a-table-column>
+          <a-table-column title="类型" :width="130">
+            <template #cell="{ record }">
+              <span class="ph-kind" :class="`k-${record.kind}`">{{ kindLabel(record.kind) }}</span>
+              <div v-if="record.fields?.length" class="muted tiny mono ph-fields">{{ record.fields.join(', ') }}</div>
+            </template>
+          </a-table-column>
+          <a-table-column title="变量类型" :width="160">
+            <template #cell="{ record }">
+              <span v-if="record.kind === 'tag' || record.kind === 'system'" class="muted">运行时取当前用户</span>
+              <a-select v-else v-model="record.varType" size="small">
+                <a-option v-for="t in VAR_TYPES" :key="t.value" :value="t.value">{{ t.label }}</a-option>
+              </a-select>
+            </template>
+          </a-table-column>
+          <a-table-column title="查询默认值">
+            <template #cell="{ record }">
+              <span v-if="record.kind === 'tag' || record.kind === 'system'" class="muted">无需默认值</span>
+              <div v-else class="ph-default">
+                <a-select v-model="record.scope" size="small" :style="{ width: '104px' }" :disabled="record.kind === 'accel'">
+                  <a-option v-for="s in DEFAULT_SCOPES" :key="s.value" :value="s.value">{{ s.label }}</a-option>
+                </a-select>
+                <a-input
+                  v-model="record.defaultValue"
+                  size="small"
+                  :max-length="150"
+                  allow-clear
+                  :placeholder="record.kind === 'expr' || record.kind === 'accel' || record.kind === 'condition'
+                    ? `完整表达式，如 ${(record.fields || [])[0] || 'field'} >= '2026-01-01'`
+                    : record.range ? '起始~结束' : (VAR_TYPES.find((t) => t.value === record.varType)?.hint || '')"
+                />
+              </div>
+            </template>
+          </a-table-column>
+          <a-table-column title="引用" :width="110">
+            <template #cell="{ record }">
+              <a-tag v-if="record.used" size="small" color="arcoblue">SQL 中 {{ record.count }} 处</a-tag>
+              <a-tag v-else size="small" color="orangered">未引用</a-tag>
+              <div v-if="record.inSelect" class="muted tiny">用在 SELECT</div>
+              <div v-if="record.range" class="muted tiny">区间 .get(0/1)</div>
+            </template>
+          </a-table-column>
+          <a-table-column title="操作" :width="110">
+            <template #cell="{ record }">
+              <a-space :size="2">
+                <a-button type="text" size="mini" @click="insertFromDraft(record)">插入</a-button>
+                <a-button type="text" size="mini" status="danger" @click="removeDraftPlaceholder(record)">
+                  <template #icon><icon-delete /></template>
+                </a-button>
+              </a-space>
+            </template>
+          </a-table-column>
+        </template>
+      </a-table>
+      <div v-if="phDraftCheck.errors.length || phDraftCheck.warnings.length" class="ph-check">
+        <div v-for="e in phDraftCheck.errors" :key="e" class="ph-err"><icon-close-circle /> {{ e }}</div>
+        <div v-for="w in phDraftCheck.warnings" :key="w" class="ph-warn"><icon-exclamation-circle /> {{ w }}</div>
+      </div>
+      <div class="muted tiny" style="margin-top:10px">
+        默认值生效范围：「仅数据集」只在数据集编辑页运行时生效；「全局生效」在发布的 MCP 工具等下游也生效，工具调用方不传值时使用。加速占位符固定为仅数据集。
+      </div>
+    </a-drawer>
 
     <a-modal
       v-model:visible="filterOpen"
@@ -1218,12 +1520,7 @@ const finishLabel = computed(() => {
   background: #fff;
   color: rgb(46, 116, 255);
 }
-.sql-outline-btn.muted-outline {
-  border-color: rgba(0, 0, 0, 0.15);
-  color: rgba(0, 0, 0, 0.65);
-}
 .sql-outline-btn:hover { background: rgba(46, 116, 255, 0.06); }
-.sql-outline-btn.muted-outline:hover { background: rgba(0, 0, 0, 0.04); }
 .sql-primary-btn {
   padding: 0 14px;
   border: 1px solid rgb(46, 116, 255);
@@ -1822,9 +2119,7 @@ const finishLabel = computed(() => {
   background: #fff;
 }
 .sql-main { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; }
-.sql-editor {
-  width: 100%; height: 100%; border: none; resize: none; padding: 16px; background: #efeff4; outline: none; font-size: 13px;
-}
+.sql-editor { width: 100%; height: 100%; min-height: 0; }
 .sql-result { border-top: 1px solid #d9e0e8; display: flex; flex-direction: column; min-height: 0; background: #fff; }
 .sql-pad { padding: 12px 16px; overflow: auto; flex: 1; }
 .hist-row { display: grid; grid-template-columns: 110px 70px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid #d9e0e8; font-size: 13px; }
@@ -2014,4 +2309,87 @@ const finishLabel = computed(() => {
 }
 .flt-chip :deep(.arco-select-view) { padding: 0; background: transparent; }
 .flt-chip :deep(.arco-select-view-value) { font-size: 12px; }
+.ph-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: rgb(46, 116, 255);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.ph-count.bad { background: #f53f3f; }
+.result-tabs { align-items: center; }
+.tab-gap { flex: 1; }
+.preview-as { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #555f6d; }
+.exec-note {
+  font-size: 12px;
+  color: #d25f00;
+  background: #fff7e8;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+}
+.exec-sql {
+  margin: 0;
+  padding: 12px;
+  background: #f7f8fa;
+  border: 1px solid #e5e6eb;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.ph-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.ph-bar .hint { font-size: 12px; color: #86909c; }
+.ph-syntax {
+  background: #f7f8fa;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.ph-syn-row { display: grid; grid-template-columns: 96px 260px 1fr; gap: 10px; align-items: center; }
+.ph-syn-row .mono { color: #1d2129; }
+.ph-syn-row .muted { color: #86909c; }
+.ph-kind {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: #e8f3ff;
+  color: #165dff;
+  white-space: nowrap;
+}
+.ph-kind.k-expr { background: #f5e8ff; color: #722ed1; }
+.ph-kind.k-condition { background: #e8fffb; color: #0fc6c2; }
+.ph-kind.k-accel { background: #fff3e8; color: #f77234; }
+.ph-kind.k-tag { background: #e8ffea; color: #00b42a; }
+.ph-kind.k-system { background: #f2f3f5; color: #4e5969; }
+.ph-fields { margin-top: 2px; }
+.ph-default { display: flex; gap: 6px; align-items: center; }
+.ph-default :deep(.arco-input-wrapper) { flex: 1; }
+.ph-check { margin-top: 10px; display: grid; gap: 4px; font-size: 12px; }
+.ph-err { color: #f53f3f; }
+.ph-warn { color: #d25f00; }
+.tiny { font-size: 12px; }
+.ph-title-count { margin-left: 8px; font-size: 12px; font-weight: 400; color: #86909c; }
+.ph-new {
+  border: 1px solid #bedaff;
+  background: #f5f9ff;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.ph-new-hd { font-weight: 600; font-size: 13px; margin-bottom: 10px; display: flex; gap: 10px; align-items: baseline; }
+.ph-new-hd .muted { font-weight: 400; color: #86909c; }
+.ph-new-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 12px; }
+.ph-new-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #4e5969; }
+.ph-new-grid .span2 { grid-column: span 2; }
+.ph-new-ft { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
 </style>
