@@ -7,6 +7,7 @@ import Overview from './views/Overview.vue'
 import Services from './views/Services.vue'
 import Tools from './views/Tools.vue'
 import Monitor from './views/Monitor.vue'
+import Analytics from './views/Analytics.vue'
 import Clients from './views/Clients.vue'
 import Users from './views/Users.vue'
 import UserGroups from './views/UserGroups.vue'
@@ -42,18 +43,19 @@ const MENU = [
   { key: 'ops', title: '监控管理', short: '监控', icon: 'icon-dashboard', items: [
     { key: 'overview', label: '概览', icon: 'icon-dashboard' },
     { key: 'monitor', label: '调用监控', icon: 'icon-bar-chart' },
+    { key: 'analytics', label: '数据分析', icon: 'icon-arrow-rise' },
     { key: 'alerts', label: '告警中心', icon: 'icon-notification', badge: true },
   ] },
 ]
 const DATA_IDS = new Set(['sources', 'datasets', 'security'])
 const MCP_IDS = new Set(['services', 'tools', 'clients', 'relations'])
-const OPS_IDS = new Set(['overview', 'monitor', 'alerts'])
+const OPS_IDS = new Set(['overview', 'monitor', 'analytics', 'alerts'])
 const ORG_IDS = new Set(['users', 'groups'])
-const CONSOLE_IDS = new Set(['overview', 'services', 'tools', 'monitor', 'users', 'groups', 'clients', 'alerts', 'relations'])
+const CONSOLE_IDS = new Set(['overview', 'services', 'tools', 'monitor', 'analytics', 'users', 'groups', 'clients', 'alerts', 'relations'])
 const TOP_VIEWS = new Set(['docs', 'sequence'])
 const CREATE_IDS = new Set(['dataset-create', 'dataset-sql', 'dataset-studio'])
 const LIST_IDS = new Set([...CONSOLE_IDS, ...DATA_IDS])
-const views = { overview: Overview, sources: Sources, datasets: Datasets, security: DataSecurity, 'dataset-create': DatasetCreate, 'dataset-sql': DatasetCreate, 'dataset-studio': DatasetStudio, services: Services, tools: Tools, relations: Relations, monitor: Monitor, sequence: Sequence, docs: Docs, clients: Clients, users: Users, groups: UserGroups, alerts: Alerts }
+const views = { overview: Overview, sources: Sources, datasets: Datasets, security: DataSecurity, 'dataset-create': DatasetCreate, 'dataset-sql': DatasetCreate, 'dataset-studio': DatasetStudio, services: Services, tools: Tools, relations: Relations, monitor: Monitor, analytics: Analytics, sequence: Sequence, docs: Docs, clients: Clients, users: Users, groups: UserGroups, alerts: Alerts }
 const cur = ref('overview')
 const collapsed = ref(false)
 const search = ref('')
