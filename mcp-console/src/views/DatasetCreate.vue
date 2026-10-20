@@ -49,6 +49,11 @@ const step = ref(props.createMode === 'sql' ? 'sql' : 'canvas')
 const enteredAsSql = ref(props.createMode === 'sql')
 const sourceId = ref(store.sources.find((s) => isDbKind(s.kind))?.id || '')
 const tableQuery = ref('')
+const tableSearchOpen = ref(false)
+const tableSearchRef = ref(null)
+const tablesLoading = ref(false)
+const sideCollapsed = ref(false)
+let tableLoadTimer = 0
 const selectedIds = ref([])
 const activeTableId = ref('')
 const fieldConfigs = ref([])
@@ -59,7 +64,9 @@ const sqlTab = ref('result')
 const sqlHistory = ref([])
 const joins = ref([])
 const joinOpen = ref(false)
+const joinAdvOpen = ref(false)
 const joinIndex = ref(0)
+const canvasZoom = ref(100)
 const fieldQuery = ref('')
 const leftFieldKw = ref('')
 const rightFieldKw = ref('')
@@ -79,10 +86,35 @@ const filterOpen = ref(false)
 const filterHelpOpen = ref(false)
 const datasetFilters = ref([])
 const activeFilterId = ref('')
+const CARDINALITY_OPTS = [
+  { value: '1', label: '1' },
+  { value: 'N', label: 'N' },
+]
+const MATCH_OPTS = [
+  { value: 'partial', label: '部分匹配' },
+  { value: 'full', label: '全部匹配' },
+]
 const joinDraft = reactive({
   type: 'left',
+  leftCard: 'N',
+  rightCard: 'N',
+  leftMatch: 'partial',
+  rightMatch: 'partial',
   conditions: [{ leftField: '', rightField: '', op: '=' }],
 })
+
+function joinTypeFromMatch(leftMatch, rightMatch) {
+  if (leftMatch === 'full' && rightMatch === 'full') return 'inner'
+  if (leftMatch === 'partial' && rightMatch === 'full') return 'left'
+  if (leftMatch === 'full' && rightMatch === 'partial') return 'right'
+  return 'full'
+}
+function matchFromJoinType(type) {
+  if (type === 'inner') return { leftMatch: 'full', rightMatch: 'full' }
+  if (type === 'left') return { leftMatch: 'partial', rightMatch: 'full' }
+  if (type === 'right') return { leftMatch: 'full', rightMatch: 'partial' }
+  return { leftMatch: 'partial', rightMatch: 'partial' }
+}
 
 function resetBlank(mode) {
   enteredAsSql.value = mode === 'sql'
@@ -141,7 +173,7 @@ function loadEdit() {
     }))
     datasetFilters.value = (d.extra.filters || []).map((f) => ({ ...f }))
     activeFilterId.value = datasetFilters.value[0]?.id || ''
-    step.value = ids.length ? 'fields' : 'canvas'
+    step.value = 'canvas'
     return true
   }
   return false
@@ -229,6 +261,15 @@ function openTable(id) {
   fieldQuery.value = ''
   step.value = 'fields'
 }
+function typeBadge(col) {
+  const k = fieldKind(col)
+  if (k === 'date') return 'Dt'
+  if (k === 'num') return 'N0'
+  return 'Str'
+}
+function colByName(table, name) {
+  return columnsOf(table).find((c) => c.column_name === name)
+}
 function joinReady(join) {
   return !!(join?.conditions || []).some((c) => c.leftField && c.rightField)
 }
@@ -246,6 +287,8 @@ function ensureJoins() {
       leftTableId: left.id,
       rightTableId: right.id,
       type: prev?.type || 'left',
+      leftCard: prev?.leftCard || 'N',
+      rightCard: prev?.rightCard || 'N',
       conditions: (prev?.conditions || []).length
         ? prev.conditions.map((c) => ({ ...c }))
         : [{ leftField: guess.leftField, rightField: guess.rightField, op: '=' }],
@@ -258,6 +301,9 @@ function openJoin(index) {
   if (!join) return
   joinIndex.value = index
   joinDraft.type = join.type || 'left'
+  joinDraft.leftCard = join.leftCard || 'N'
+  joinDraft.rightCard = join.rightCard || 'N'
+  Object.assign(joinDraft, matchFromJoinType(joinDraft.type))
   joinDraft.conditions = (join.conditions || []).map((c) => ({ ...c }))
   if (!joinDraft.conditions.length) {
     const guess = guessJoinFields(selectedTables.value[index], selectedTables.value[index + 1])
@@ -265,24 +311,53 @@ function openJoin(index) {
   }
   leftFieldKw.value = ''
   rightFieldKw.value = ''
+  joinAdvOpen.value = true
   joinOpen.value = true
 }
 function addJoinCondition() {
   joinDraft.conditions.push({ leftField: '', rightField: '', op: '=' })
 }
+function clearJoinConditions() {
+  joinDraft.conditions = [{ leftField: '', rightField: '', op: '=' }]
+}
+function removeJoinCondition(i) {
+  if (joinDraft.conditions.length <= 1) {
+    clearJoinConditions()
+    return
+  }
+  joinDraft.conditions.splice(i, 1)
+}
+function syncJoinTypeFromMatch() {
+  joinDraft.type = joinTypeFromMatch(joinDraft.leftMatch, joinDraft.rightMatch)
+}
+function resetJoinAdv() {
+  joinDraft.leftCard = 'N'
+  joinDraft.rightCard = 'N'
+  joinDraft.leftMatch = 'partial'
+  joinDraft.rightMatch = 'partial'
+  syncJoinTypeFromMatch()
+}
 function persistJoin() {
   const join = joins.value[joinIndex.value]
   if (!join) return
+  syncJoinTypeFromMatch()
   join.type = joinDraft.type
+  join.leftCard = joinDraft.leftCard
+  join.rightCard = joinDraft.rightCard
   const conds = joinDraft.conditions.filter((c) => c.leftField && c.rightField)
   if (conds.length) join.conditions = conds
-}
-function setJoinType(type) {
-  joinDraft.type = type
-  persistJoin()
+  else join.conditions = joinDraft.conditions.map((c) => ({ ...c }))
 }
 function closeJoin() {
   persistJoin()
+  joinOpen.value = false
+}
+function confirmJoin() {
+  persistJoin()
+  if (selectedTables.value.length > 1 && !joinReady(joins.value[joinIndex.value])) {
+    Message.warning('请选择关联字段')
+    return
+  }
   joinOpen.value = false
 }
 function leftJoinTable() {
@@ -403,6 +478,24 @@ function back() {
   emit('goto', 'datasets')
 }
 
+function startTableLoad() {
+  tablesLoading.value = true
+  clearTimeout(tableLoadTimer)
+  tableLoadTimer = setTimeout(() => {
+    tablesLoading.value = false
+  }, 480)
+}
+function openTableSearch() {
+  tableSearchOpen.value = true
+  nextTick(() => tableSearchRef.value?.focus())
+}
+function closeTableSearch() {
+  tableSearchOpen.value = false
+  tableQuery.value = ''
+}
+function refreshTables() {
+  startTableLoad()
+}
 function selectSource(id) {
   sourceId.value = id
   selectedIds.value = []
@@ -410,10 +503,13 @@ function selectSource(id) {
   fieldConfigs.value = []
   joins.value = []
   fieldQuery.value = ''
+  tableQuery.value = ''
+  tableSearchOpen.value = false
   sqlExpanded.value = false
   if (!isSql.value) step.value = 'canvas'
   sqlResult.value = null
   sqlMessage.value = ''
+  startTableLoad()
 }
 
 function fieldKey(datasetId, columnName) {
@@ -441,11 +537,6 @@ function addTable(id) {
     })
   })
   ensureJoins()
-  if (isNew && selectedIds.value.length > 1) {
-    step.value = 'canvas'
-    nextTick(() => openJoin(selectedIds.value.length - 2))
-    return
-  }
   step.value = 'fields'
 }
 
@@ -454,7 +545,7 @@ function removeTable(id) {
   fieldConfigs.value = fieldConfigs.value.filter((f) => f.datasetId !== id)
   if (activeTableId.value === id) activeTableId.value = selectedIds.value[0] || ''
   ensureJoins()
-  if (!selectedIds.value.length) step.value = 'canvas'
+  step.value = 'canvas'
 }
 
 function onDrop(ev) {
@@ -737,92 +828,88 @@ const finishLabel = computed(() => {
       </div>
     </header>
 
-    <div v-if="!isSql" class="create-body">
+    <div v-if="!isSql" class="create-body" :class="{ 'side-off': sideCollapsed }">
       <aside class="create-side">
         <div class="side-bar">模型配置</div>
-        <div class="side-pad">
-          <div class="side-row">
-            <h2 class="side-title">数据表</h2>
+        <button v-if="sideCollapsed" type="button" class="side-expand" @click="sideCollapsed = false">数据表</button>
+        <div v-else class="side-pad">
+          <div class="side-hd">
+            <span>数据表</span>
+            <button type="button" class="side-ico" title="收起" @click="sideCollapsed = true"><icon-menu-fold /></button>
           </div>
           <div class="side-label">选择数据源</div>
           <label class="source-pick">
             <icon-storage />
-            <a-select v-model="sourceId" :bordered="false" @change="selectSource">
+            <a-select v-model="sourceId" allow-search :bordered="false" placeholder="请选择数据源" @change="selectSource">
               <a-option v-for="s in dbSources" :key="s.id" :value="s.id">{{ s.name }}</a-option>
             </a-select>
           </label>
-          <label class="pill-search">
-            <icon-search />
-            <input v-model="tableQuery" placeholder="搜索数据表" />
-          </label>
-          <button type="button" class="dash-btn" @click="openSql"><icon-code /> SQL 代码创建表</button>
+          <div class="side-tabrow">
+            <template v-if="!tableSearchOpen">
+              <span class="side-tab on">数据表</span>
+              <span class="tab-gap" />
+              <button type="button" class="side-ico" title="搜索" @click="openTableSearch"><icon-search /></button>
+              <button type="button" class="side-ico" title="刷新" :disabled="tablesLoading" @click="refreshTables"><icon-refresh /></button>
+            </template>
+            <label v-else class="inline-search">
+              <icon-search />
+              <input ref="tableSearchRef" v-model="tableQuery" placeholder="搜索数据表" />
+              <button type="button" class="side-ico" title="关闭搜索" @click="closeTableSearch"><icon-close /></button>
+            </label>
+          </div>
+          <button type="button" class="dash-btn" @click="openSql"><icon-code /> SQL代码创建表</button>
           <div class="table-list">
-            <button
-              v-for="t in sourceTables"
-              :key="t.id"
-              type="button"
-              class="table-item"
-              :class="{ on: selectedIds.includes(t.id) }"
-              draggable="true"
-              @dragstart="(e) => e.dataTransfer.setData('application/x-mcp-table', t.id)"
-              @click="addTable(t.id)"
-            >
-              <icon-file />
-              <span class="ellipsis">{{ t.display_name }}</span>
-              <icon-check-circle v-if="selectedIds.includes(t.id)" />
-            </button>
-            <div v-if="!sourceTables.length" class="muted empty-hint">暂无数据表</div>
+            <div v-if="tablesLoading" class="table-loading">数据加载中...</div>
+            <template v-else>
+              <button
+                v-for="t in sourceTables"
+                :key="t.id"
+                type="button"
+                class="table-item"
+                :class="{ on: selectedIds.includes(t.id) }"
+                draggable="true"
+                @dragstart="(e) => e.dataTransfer.setData('application/x-mcp-table', t.id)"
+                @click="addTable(t.id)"
+              >
+                <icon-file />
+                <span class="ellipsis">{{ t.display_name }}</span>
+                <icon-check-circle v-if="selectedIds.includes(t.id)" />
+              </button>
+              <div v-if="!sourceTables.length" class="muted empty-hint">{{ tableQuery.trim() ? '没有匹配的数据表' : '暂无数据表' }}</div>
+            </template>
           </div>
         </div>
       </aside>
 
-      <section class="create-canvas" :class="{ dim: step === 'fields' || joinOpen }" @dragover.prevent @drop="onDrop">
-        <div v-if="selectedTables.length" class="canvas-graph-wrap" :class="{ lifted: step === 'fields' || joinOpen }">
-          <div class="canvas-graph">
+      <section class="create-canvas" @dragover.prevent @drop="onDrop">
+        <div v-if="selectedTables.length" class="canvas-graph-wrap">
+          <div class="graph-board" :style="{ transform: `scale(${canvasZoom / 100})` }">
             <template v-for="(t, i) in selectedTables" :key="t.id">
               <div
-                class="table-card"
-                :class="{ on: activeTable?.id === t.id }"
+                class="graph-node"
+                :class="{ on: activeTable?.id === t.id, warn: i > 0 && !joinReady(joins[i - 1]) }"
+                :title="t.display_name"
                 @click="openTable(t.id)"
               >
-                <div class="table-card-hd">
-                  <span class="card-ico"><icon-file /></span>
-                  <div class="min0">
-                    <div class="ds-title">{{ t.display_name }}</div>
-                    <div class="sub">{{ t.table_name }}</div>
-                  </div>
-                  <button type="button" class="rm" title="移除" @click.stop="removeTable(t.id)"><icon-close /></button>
-                </div>
-                <div class="card-chips">
-                  <span>字段 {{ t.columns?.length || 0 }}</span>
-                  <span>约 {{ (t.row_count_estimate || 0).toLocaleString() }} 行</span>
-                </div>
+                <span class="ellipsis">{{ t.display_name }}</span>
+                <button type="button" class="rm" title="移除" @click.stop="removeTable(t.id)"><icon-close /></button>
               </div>
               <button
                 v-if="i < selectedTables.length - 1"
                 type="button"
-                class="join-link"
-                :class="{ ready: joinReady(joins[i]), warn: !joinReady(joins[i]) }"
+                class="graph-edge"
+                :class="{ warn: !joinReady(joins[i]) }"
+                title="编辑逻辑关联"
                 @click.stop="openJoin(i)"
               >
-                <span class="join-line" />
-                <span class="join-node">
-                  <span class="join-venn" :class="joins[i]?.type || 'left'" />
-                  {{ joinReady(joins[i]) ? joinLabel(joins[i]?.type) : '配置关联' }}
-                </span>
-                <span class="join-line" />
+                <i class="wire" />
+                <span class="dot" />
+                <i class="wire" />
+                <span class="dot" />
+                <i class="wire" />
               </button>
             </template>
           </div>
-          <p class="canvas-hint">
-            {{ selectedTables.length > 1 ? '点击中间节点配置左关联 / 右关联 / 内关联 / 全关联。' : '可继续从左侧拖入数据表，完成后开始数据处理。' }}
-          </p>
-          <button v-if="selectedTables.length > 1 && joinLine" type="button" class="join-summary" @click="sqlExpanded = !sqlExpanded">
-            <icon-relation />
-            <span class="ellipsis">{{ joinLine }}</span>
-            <span class="muted">{{ sqlExpanded ? '收起 SQL' : '查看 SQL' }}</span>
-          </button>
-          <pre v-if="sqlExpanded && modelSql" class="join-sql mono">{{ modelSql }}</pre>
         </div>
         <div v-else class="canvas-empty">
           <icon-mind-mapping class="empty-ico" />
@@ -834,89 +921,13 @@ const finishLabel = computed(() => {
           </div>
         </div>
 
-        <div v-if="joinOpen" class="join-sheet">
-          <div class="sheet-handle">
-            <span />
-            <button type="button" class="join-sheet-close" title="关闭" @click="closeJoin"><icon-close /></button>
-          </div>
-          <div class="join-sheet-body">
-            <section class="join-kind-pane">
-              <div class="join-pane-title">选择关联方式</div>
-              <div class="jk-cards">
-                <button
-                  v-for="t in JOIN_TYPES"
-                  :key="t.value"
-                  type="button"
-                  class="jk-card"
-                  :class="{ on: joinDraft.type === t.value }"
-                  :title="t.desc"
-                  @click="setJoinType(t.value)"
-                >
-                  <span class="jk-switch" :class="{ on: joinDraft.type === t.value }"><i /></span>
-                  <span>{{ t.label }}</span>
-                </button>
-              </div>
-              <div class="join-cond-hd">关联条件</div>
-              <div v-for="(c, i) in joinDraft.conditions" :key="i" class="join-cond">
-                <a-select v-model="c.leftField" :placeholder="leftJoinTable()?.display_name || '左表字段'" size="small" :style="{ width: '148px' }" @change="persistJoin">
-                  <a-option v-for="col in columnsOf(leftJoinTable())" :key="col.column_name" :value="col.column_name">{{ col.column_name }}</a-option>
-                </a-select>
-                <a-select v-model="c.op" size="small" :style="{ width: '64px' }" @change="persistJoin">
-                  <a-option value="=">=</a-option>
-                  <a-option value="!=">!=</a-option>
-                </a-select>
-                <a-select v-model="c.rightField" :placeholder="rightJoinTable()?.display_name || '右表字段'" size="small" :style="{ width: '148px' }" @change="persistJoin">
-                  <a-option v-for="col in columnsOf(rightJoinTable())" :key="col.column_name" :value="col.column_name">{{ col.column_name }}</a-option>
-                </a-select>
-                <button type="button" class="text-danger" @click="joinDraft.conditions.splice(i, 1); persistJoin()">删除</button>
-              </div>
-              <button type="button" class="ghost-btn sm" @click="addJoinCondition">添加条件</button>
-            </section>
-            <section class="join-field-pane">
-              <div class="join-pane-title">快捷选择展示字段</div>
-              <div class="jf-cols">
-                <div class="jf-col">
-                  <div class="jf-col-hd">
-                    <span class="jf-tag">左表</span>
-                    <span class="ellipsis">{{ leftJoinTable()?.display_name || '—' }}</span>
-                  </div>
-                  <label class="jf-search">
-                    <icon-search />
-                    <input v-model="leftFieldKw" placeholder="请输入关键字搜索" />
-                  </label>
-                  <div class="jf-list">
-                    <label v-for="f in filteredJoinFields('left')" :key="f.id" class="jf-row">
-                      <a-checkbox v-model="f.selected" />
-                      <span class="jf-mark" />
-                      <span class="ellipsis">{{ f.fieldName }}</span>
-                    </label>
-                    <div v-if="!filteredJoinFields('left').length" class="muted empty-hint">暂无字段</div>
-                  </div>
-                </div>
-                <div class="jf-col">
-                  <div class="jf-col-hd">
-                    <span class="jf-tag">右表</span>
-                    <span class="ellipsis">{{ rightJoinTable()?.display_name || '—' }}</span>
-                  </div>
-                  <label class="jf-search">
-                    <icon-search />
-                    <input v-model="rightFieldKw" placeholder="请输入关键字搜索" />
-                  </label>
-                  <div class="jf-list">
-                    <label v-for="f in filteredJoinFields('right')" :key="f.id" class="jf-row">
-                      <a-checkbox v-model="f.selected" />
-                      <span class="jf-mark" />
-                      <span class="ellipsis">{{ f.fieldName }}</span>
-                    </label>
-                    <div v-if="!filteredJoinFields('right').length" class="muted empty-hint">暂无字段</div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
+        <div class="canvas-zoom">
+          <button type="button" :disabled="canvasZoom <= 50" @click="canvasZoom = Math.max(50, canvasZoom - 10)">−</button>
+          <span>{{ canvasZoom }}%</span>
+          <button type="button" :disabled="canvasZoom >= 150" @click="canvasZoom = Math.min(150, canvasZoom + 10)">＋</button>
         </div>
 
-        <div v-if="step === 'fields' && !joinOpen" class="field-sheet">
+        <div v-if="step === 'fields'" class="field-sheet">
           <div class="sheet-handle"><span /></div>
           <div class="sheet-body">
             <aside class="sheet-side">
@@ -924,8 +935,8 @@ const finishLabel = computed(() => {
               <div class="ds-title">{{ activeTable?.display_name }}</div>
               <div class="sub">数据源：{{ sourceName || '—' }}</div>
               <button type="button" class="ghost-btn danger" :disabled="!activeTable" @click="removeTable(activeTable.id)">删除此表</button>
-              <div v-if="selectedTables.length > 1" class="picked">
-                <div class="side-label">已选择数据表</div>
+              <div class="picked">
+                <div class="side-label">已选择数据表 · 请逐个配置字段</div>
                 <button
                   v-for="t in selectedTables"
                   :key="t.id"
@@ -936,13 +947,19 @@ const finishLabel = computed(() => {
                 >
                   <icon-file />
                   <span class="ellipsis">{{ t.display_name }}</span>
+                  <em>{{ fieldsOfTable(t.id).filter((f) => f.selected !== false).length }}/{{ fieldsOfTable(t.id).length }}</em>
                 </button>
               </div>
             </aside>
             <div class="sheet-main">
               <div class="field-hd">
-                <strong>字段选择（{{ activeFieldSelected }}/{{ activeFieldTotal }}）</strong>
+                <strong>
+                  {{ activeTable?.display_name || '字段选择' }}
+                  （{{ activeFieldSelected }}/{{ activeFieldTotal }}）
+                </strong>
                 <div class="field-hd-right">
+                  <button type="button" class="link" :disabled="!activeFieldRows.length" @click="fieldsOfTable(activeTable?.id).forEach((f) => { f.selected = true })">全选</button>
+                  <button type="button" class="link" :disabled="!activeFieldSelected" @click="fieldsOfTable(activeTable?.id).forEach((f) => { f.selected = false })">清空</button>
                   <label class="pill-search sm">
                     <icon-search />
                     <input v-model="fieldQuery" placeholder="搜索字段" />
@@ -950,18 +967,29 @@ const finishLabel = computed(() => {
                   <button type="button" class="icon-btn" title="返回画布" @click="step = 'canvas'"><icon-close /></button>
                 </div>
               </div>
+              <p v-if="selectedTables.length > 1" class="field-tip">
+                已选 {{ selectedTables.length }} 张表，请在左侧切换，为每一张表分别勾选并命名字段
+                <template v-if="selectedTables.findIndex((t) => t.id === activeTable?.id) < selectedTables.length - 1">
+                  ·
+                  <button
+                    type="button"
+                    class="link"
+                    @click="openTable(selectedTables[selectedTables.findIndex((t) => t.id === activeTable?.id) + 1].id)"
+                  >配置下一张表</button>
+                </template>
+              </p>
               <div class="field-list">
                 <div class="field-row head">
                   <span />
                   <span>字段名称</span>
-                  <span>类型</span>
                   <span>物理字段</span>
+                  <span>类型</span>
                 </div>
                 <label v-for="f in activeFieldRows" :key="f.id" class="field-row">
                   <a-checkbox v-model="f.selected" />
                   <a-input v-model="f.fieldName" size="small" />
+                  <span class="mono sub field-phy">{{ f.physicalName }}</span>
                   <a-tag size="small" color="arcoblue">{{ f.dataType }}</a-tag>
-                  <span class="mono sub">{{ f.physicalName }}</span>
                 </label>
                 <div v-if="!activeFieldRows.length" class="muted empty-hint">没有匹配的字段</div>
               </div>
@@ -971,28 +999,43 @@ const finishLabel = computed(() => {
       </section>
     </div>
 
-    <div v-else class="sql-body">
+    <div v-else class="sql-body" :class="{ 'side-off': sideCollapsed }">
       <aside class="create-side">
-        <div class="side-pad">
-          <div class="side-row">
-            <h2 class="side-title">数据表</h2>
+        <button v-if="sideCollapsed" type="button" class="side-expand" @click="sideCollapsed = false">数据表</button>
+        <div v-else class="side-pad">
+          <div class="side-hd">
+            <span>数据表</span>
+            <button type="button" class="side-ico" title="收起" @click="sideCollapsed = true"><icon-menu-fold /></button>
           </div>
-          <div class="side-label">当前数据源</div>
+          <div class="side-label">选择数据源</div>
           <label class="source-pick">
             <icon-storage />
-            <a-select v-model="sourceId" :bordered="false" @change="selectSource">
+            <a-select v-model="sourceId" allow-search :bordered="false" placeholder="请选择数据源" @change="selectSource">
               <a-option v-for="s in dbSources" :key="s.id" :value="s.id">{{ s.name }}</a-option>
             </a-select>
           </label>
-          <label class="pill-search">
-            <icon-search />
-            <input v-model="tableQuery" placeholder="搜索数据表" />
-          </label>
+          <div class="side-tabrow">
+            <template v-if="!tableSearchOpen">
+              <span class="side-tab on">数据表</span>
+              <span class="tab-gap" />
+              <button type="button" class="side-ico" title="搜索" @click="openTableSearch"><icon-search /></button>
+              <button type="button" class="side-ico" title="刷新" :disabled="tablesLoading" @click="refreshTables"><icon-refresh /></button>
+            </template>
+            <label v-else class="inline-search">
+              <icon-search />
+              <input ref="tableSearchRef" v-model="tableQuery" placeholder="搜索数据表" />
+              <button type="button" class="side-ico" title="关闭搜索" @click="closeTableSearch"><icon-close /></button>
+            </label>
+          </div>
           <div class="table-list">
-            <button v-for="t in sourceTables" :key="t.id" type="button" class="table-item" @click="insertTableSql(t)">
-              <icon-file />
-              <span class="ellipsis">{{ t.display_name }}</span>
-            </button>
+            <div v-if="tablesLoading" class="table-loading">数据加载中...</div>
+            <template v-else>
+              <button v-for="t in sourceTables" :key="t.id" type="button" class="table-item" @click="insertTableSql(t)">
+                <icon-file />
+                <span class="ellipsis">{{ t.display_name }}</span>
+              </button>
+              <div v-if="!sourceTables.length" class="muted empty-hint">{{ tableQuery.trim() ? '没有匹配的数据表' : '暂无数据表' }}</div>
+            </template>
           </div>
         </div>
       </aside>
@@ -1050,9 +1093,116 @@ const finishLabel = computed(() => {
       </section>
     </div>
 
-    <footer v-if="!isSql && step !== 'sql' && !joinOpen" class="create-foot">
+    <footer v-if="!isSql && step !== 'sql'" class="create-foot">
       <button type="button" class="primary-btn lg" :disabled="!selectedIds.length" @click="finish">{{ finishLabel }}</button>
     </footer>
+
+    <Teleport to="body">
+      <div v-if="joinOpen" class="rel-mask" @click.self="closeJoin">
+        <div class="rel-sheet" role="dialog" aria-label="编辑逻辑关联">
+          <div class="rel-head">
+            <span>编辑逻辑关联</span>
+            <button type="button" class="rel-x" aria-label="关闭" @click="closeJoin"><icon-close /></button>
+          </div>
+          <div class="rel-body">
+            <div class="rel-tables">
+              <div class="rel-tbl"><icon-file /> <span class="ellipsis">{{ leftJoinTable()?.display_name }}</span></div>
+              <span class="rel-tables-gap" />
+              <div class="rel-tbl"><icon-file /> <span class="ellipsis">{{ rightJoinTable()?.display_name }}</span></div>
+            </div>
+            <div class="rel-conds">
+              <div v-for="(c, i) in joinDraft.conditions" :key="i" class="rel-cond">
+                <a-select
+                  v-model="c.leftField"
+                  allow-search
+                  size="small"
+                  :placeholder="leftJoinTable()?.display_name || '左表字段'"
+                  @change="persistJoin"
+                >
+                  <a-option
+                    v-for="col in columnsOf(leftJoinTable())"
+                    :key="col.column_name"
+                    :value="col.column_name"
+                    :label="col.column_name"
+                  >
+                    <span class="rel-opt"><i class="rel-type" :class="fieldKind(col)">{{ typeBadge(col) }}</i><span>{{ col.column_name }}</span></span>
+                  </a-option>
+                </a-select>
+                <span class="rel-eq">=</span>
+                <a-select
+                  v-model="c.rightField"
+                  allow-search
+                  size="small"
+                  :placeholder="rightJoinTable()?.display_name || '右表字段'"
+                  @change="persistJoin"
+                >
+                  <a-option
+                    v-for="col in columnsOf(rightJoinTable())"
+                    :key="col.column_name"
+                    :value="col.column_name"
+                    :label="col.column_name"
+                  >
+                    <span class="rel-opt"><i class="rel-type" :class="fieldKind(col)">{{ typeBadge(col) }}</i><span>{{ col.column_name }}</span></span>
+                  </a-option>
+                </a-select>
+                <button type="button" class="rel-cond-rm" title="删除条件" @click="removeJoinCondition(i)"><icon-close /></button>
+              </div>
+            </div>
+            <div class="rel-acts">
+              <button type="button" class="rel-link" @click="addJoinCondition"><icon-plus /> 添加关联字段</button>
+              <button type="button" class="rel-link muted" @click="clearJoinConditions"><icon-delete /> 清除全部</button>
+            </div>
+
+            <div v-if="joinAdvOpen" class="rel-adv-panel">
+              <div class="rel-adv-hd">
+                <div class="rel-adv-title">
+                  <span>高级配置</span>
+                  <a-tooltip content="关联关系表示两侧基数；数据匹配度决定保留哪侧未匹配行（部分=保留，全部=仅匹配）。">
+                    <icon-question-circle class="rel-help" />
+                  </a-tooltip>
+                </div>
+                <button type="button" class="rel-link muted" @click="resetJoinAdv"><icon-refresh /> 恢复默认</button>
+              </div>
+              <div class="rel-adv-row">
+                <div class="rel-adv-label"><span class="req">*</span>关联关系</div>
+                <div class="rel-adv-pair">
+                  <a-select v-model="joinDraft.leftCard" size="small" :options="CARDINALITY_OPTS" @change="persistJoin" />
+                  <span class="rel-colon">:</span>
+                  <a-select v-model="joinDraft.rightCard" size="small" :options="CARDINALITY_OPTS" @change="persistJoin" />
+                </div>
+              </div>
+              <div class="rel-adv-row">
+                <div class="rel-adv-label"><span class="req">*</span>数据匹配度</div>
+                <div class="rel-adv-pair">
+                  <a-select
+                    v-model="joinDraft.leftMatch"
+                    size="small"
+                    :options="MATCH_OPTS"
+                    @change="() => { syncJoinTypeFromMatch(); persistJoin() }"
+                  />
+                  <span class="rel-colon" />
+                  <a-select
+                    v-model="joinDraft.rightMatch"
+                    size="small"
+                    :options="MATCH_OPTS"
+                    @change="() => { syncJoinTypeFromMatch(); persistJoin() }"
+                  />
+                </div>
+                <div class="rel-adv-hint muted">当前等价于{{ joinLabel(joinDraft.type) }}（{{ JOIN_TYPES.find((t) => t.value === joinDraft.type)?.sql }}）</div>
+              </div>
+            </div>
+          </div>
+          <div class="rel-foot">
+            <button type="button" class="rel-toggle" @click="joinAdvOpen = !joinAdvOpen">
+              {{ joinAdvOpen ? '收起' : '高级配置' }}
+              <icon-up v-if="joinAdvOpen" />
+              <icon-down v-else />
+            </button>
+            <button type="button" class="rel-ok" @click="confirmJoin">确定</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <a-modal v-model:visible="helpOpen" title="常见问题" :width="480" unmount-on-close :footer="false">
       <ul class="sql-help">
@@ -1260,10 +1410,10 @@ const finishLabel = computed(() => {
               <span>过滤字段项</span>
               <button type="button" class="flt-add" title="添加过滤字段" @click="addFilterField"><icon-plus /></button>
             </div>
-            <button
+            <div
               v-for="item in datasetFilters"
               :key="item.id"
-              type="button"
+              role="button"
               class="flt-chip"
               :class="{ on: activeFilterId === item.id }"
               @click="activeFilterId = item.id"
@@ -1278,13 +1428,12 @@ const finishLabel = computed(() => {
                 size="mini"
                 :bordered="false"
                 :style="{ width: '132px' }"
-                @click.stop
                 @change="(v) => changeFilterField(item, v)"
               >
                 <a-option v-for="f in filterableFields" :key="f.id" :value="f.id">{{ f.fieldName }}</a-option>
               </a-select>
               <span class="flt-chip-del" title="移除" @click.stop="removeFilterField(item.id)"><icon-close /></span>
-            </button>
+            </div>
             <div v-if="!datasetFilters.length" class="flt-empty">点击右上角 + 添加过滤字段</div>
           </aside>
           <section v-if="activeFilter" class="flt-main">
@@ -1626,40 +1775,129 @@ const finishLabel = computed(() => {
 .primary-btn:hover { filter: brightness(1.05); }
 .primary-btn:disabled { background: var(--accent-soft); color: rgba(86, 82, 255, .45); cursor: not-allowed; }
 .primary-btn.lg { height: 42px; padding: 0 28px; font-size: 15px; }
-.create-body, .sql-body { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: 0; flex: 1; }
+.create-body, .sql-body { display: grid; grid-template-columns: 239px minmax(0, 1fr); min-height: 0; flex: 1; }
+.create-body.side-off, .sql-body.side-off { grid-template-columns: 36px minmax(0, 1fr); }
 .create-side {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid #d9e0e8;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
   background: #fff;
 }
 .side-bar {
   height: 48px;
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  border-bottom: 1px solid #d9e0e8;
-  font-size: 16px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 14px;
   font-weight: 600;
 }
-.side-pad { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: 16px; overflow: auto; }
+.side-off .side-bar { display: none; }
+.side-pad { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: 0 0 16px; overflow: hidden; }
+.side-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 8px 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+}
+.side-expand {
+  writing-mode: vertical-rl;
+  letter-spacing: 3px;
+  margin: 16px auto 0;
+  padding: 10px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 16px;
+}
+.side-expand:hover { color: rgb(46, 116, 255); background: rgba(46, 116, 255, 0.06); }
 .side-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .side-title { margin: 0; font-size: 16px; font-weight: 600; }
-.side-label { font-size: 13px; color: #667085; margin-bottom: 6px; }
+.side-label {
+  font-size: 12px;
+  line-height: 20px;
+  color: rgba(0, 0, 0, 0.45);
+  padding: 0 12px;
+  margin: 0 0 8px;
+}
 .source-pick {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 44px;
-  margin-bottom: 16px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  color: rgb(var(--accent));
+  height: 36px;
+  margin: 0 8px 4px 12px;
+  padding: 0 9px;
+  border-radius: 4px;
+  background: rgba(46, 116, 255, 0.08);
+  color: rgba(0, 0, 0, 0.65);
 }
-.source-pick :deep(.arco-select) { flex: 1; }
-.source-pick :deep(.arco-select-view) { background: transparent; padding: 0; }
+.source-pick :deep(.arco-select) { flex: 1; min-width: 0; }
+.source-pick :deep(.arco-select-view) { background: transparent; padding: 0; height: 34px; min-height: 34px; font-size: 12px; color: rgba(0, 0, 0, 0.85); }
+.side-tabrow {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 8px 0 12px;
+  margin-top: 4px;
+}
+.side-tab {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+  line-height: 36px;
+}
+.side-ico {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.side-ico + .side-ico { margin-left: 4px; }
+.side-ico:hover { background: rgba(0, 0, 0, 0.04); }
+.side-ico:disabled { opacity: 0.45; cursor: default; }
+.inline-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  color: rgba(0, 0, 0, 0.45);
+}
+.inline-search:focus-within { border-color: rgb(46, 116, 255); }
+.inline-search input {
+  min-width: 0;
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.85);
+}
+.table-loading {
+  margin-top: 40px;
+  padding: 0 24px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
 .side-tabs { display: flex; gap: 20px; margin-bottom: 12px; }
 .side-tabs button {
   position: relative;
@@ -1696,29 +1934,46 @@ const finishLabel = computed(() => {
 .pill-search:focus-within { border-color: rgb(var(--accent)); }
 .pill-search input { min-width: 0; flex: 1; border: none; outline: none; background: transparent; font-size: 13px; }
 .dash-btn {
-  width: 100%;
-  margin-bottom: 12px;
-  border: 1px dashed rgba(86, 82, 255, .55);
+  display: flex;
+  align-items: center;
+  width: calc(100% - 20px);
+  height: 32px;
+  margin: 0 8px 0 12px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   background: #fff;
-  color: rgb(var(--accent));
-  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  text-align: left;
+  gap: 8px;
 }
-.dash-btn:hover { background: var(--accent-soft); }
-.table-list { display: flex; flex-direction: column; gap: 2px; }
+.dash-btn:hover { color: rgb(46, 116, 255); }
+.table-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px;
+}
 .table-item {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 40px;
+  height: 32px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 0 8px;
   cursor: pointer;
   text-align: left;
-  color: #555f6d;
-  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 12px;
 }
 .table-item:hover, .table-item.on { background: #eef2f7; color: #1a1c1c; }
 .table-item .arco-icon { color: #555f6d; }
@@ -1734,7 +1989,6 @@ const finishLabel = computed(() => {
   overflow: auto;
   padding: 32px;
 }
-.create-canvas.dim { padding-bottom: 320px; }
 .canvas-empty { text-align: center; margin-top: 12vh; color: #555f6d; }
 .empty-ico { font-size: 64px; color: rgb(var(--accent)); opacity: .28; margin-bottom: 12px; }
 .chip-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
@@ -1752,127 +2006,293 @@ const finishLabel = computed(() => {
   box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
 }
 .chip:hover { border-color: rgb(var(--accent)); color: rgb(var(--accent)); }
-.canvas-graph-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.canvas-graph-wrap.lifted { padding-top: 24px; }
-.canvas-graph { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; }
-.table-card {
-  min-width: 260px;
-  background: #fff;
-  border: 1px solid #d9e0e8;
-  border-radius: 12px;
-  padding: 16px;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+.canvas-graph-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 48px 24px 80px;
 }
-.table-card.on { border-color: rgb(var(--accent)); }
-.table-card-hd { display: flex; align-items: flex-start; gap: 10px; }
-.card-ico {
-  display: inline-flex;
+.graph-board {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  color: rgb(var(--accent));
-  font-size: 18px;
+  gap: 0 0;
+  transform-origin: top center;
 }
-.rm {
-  opacity: 0;
+.graph-node {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 18px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.85);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.graph-node .ellipsis { min-width: 0; flex: 1; }
+.graph-node.on { border-color: rgb(46, 116, 255); color: rgb(46, 116, 255); }
+.graph-node.warn { border-color: #f77234; }
+.graph-node .rm {
+  display: none;
+  margin-left: 6px;
   border: none;
   background: transparent;
-  color: #555f6d;
+  color: rgba(0, 0, 0, 0.45);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
+  padding: 0;
+  line-height: 1;
 }
-.table-card:hover .rm { opacity: 1; }
-.rm:hover { background: #ffdad6; color: #93000a; }
-.card-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
-.card-chips span {
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: #f5f7fb;
-  font-size: 12px;
-  color: #555f6d;
-}
-.canvas-hint { margin: 0; font-size: 13px; color: #667085; text-align: center; }
-.join-link {
-  display: flex;
+.graph-node:hover .rm { display: inline-flex; }
+.graph-edge {
+  display: inline-flex;
   align-items: center;
-  border: none;
+  width: 72px;
+  height: 36px;
+  border: 0;
   background: none;
   padding: 0 4px;
   cursor: pointer;
-  min-width: 132px;
-  color: rgb(var(--accent));
 }
-.join-line { flex: 1; height: 2px; background: #c8d2e4; min-width: 16px; }
-.join-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgb(var(--accent));
-  background: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+.graph-edge .wire {
+  flex: 1;
+  height: 0;
+  border-top: 1px solid #c9cdd4;
 }
-.join-link.warn .join-node { border-color: #f77234; color: #d25f00; }
-.join-venn { width: 22px; height: 14px; position: relative; display: inline-block; }
-.join-venn::before,
-.join-venn::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  width: 14px;
-  height: 14px;
+.graph-edge .dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  border: 1.5px solid currentColor;
+  border: 2px solid rgb(46, 116, 255);
+  background: #fff;
   box-sizing: border-box;
 }
-.join-venn::before { left: 0; }
-.join-venn::after { right: 0; }
-.join-venn.inner::before,
-.join-venn.inner::after { background: color-mix(in srgb, currentColor 35%, transparent); }
-.join-venn.left::before { background: currentColor; }
-.join-venn.right::after { background: currentColor; }
-.join-venn.full::before,
-.join-venn.full::after { background: currentColor; }
-.join-summary {
-  display: flex;
+.graph-edge.warn .dot { border-color: #f77234; }
+.canvas-zoom {
+  position: absolute;
+  right: 20px;
+  bottom: 72px;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  max-width: 720px;
-  width: 100%;
-  height: 40px;
-  padding: 0 14px;
-  border: 1px solid #d9e0e8;
-  border-radius: 10px;
+  height: 28px;
+  padding: 0 8px;
   background: #fff;
-  color: #1a1c1c;
-  cursor: pointer;
-  text-align: left;
-  font-size: 13px;
-}
-.join-summary:hover { border-color: rgb(var(--accent)); }
-.join-sql {
-  width: min(720px, 100%);
-  margin: 0;
-  padding: 12px;
-  background: #fff;
-  border: 1px solid #d9e0e8;
-  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
   font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  text-align: left;
-  color: #555f6d;
+  color: rgba(0, 0, 0, 0.65);
 }
+.canvas-zoom button {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+.canvas-zoom button:disabled { opacity: 0.35; cursor: default; }
+.rel-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.rel-sheet {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 9px 28px 8px rgba(0, 0, 0, 0.05), 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12);
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 12px;
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', helvetica, arial, sans-serif;
+}
+.rel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 16px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.rel-x {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.rel-x:hover { background: rgba(0, 0, 0, 0.04); }
+.rel-body { padding: 0 20px; }
+.rel-tables {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.rel-tables-gap { flex: 0 0 32px; }
+.rel-tbl {
+  flex: 1 0 136px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.rel-conds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.rel-cond {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.rel-cond :deep(.arco-select) { flex: 1 0 136px; min-width: 0; }
+.rel-eq {
+  flex: 0 0 32px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(46, 116, 255);
+  font-weight: 600;
+  font-size: 14px;
+}
+.rel-cond-rm {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.rel-cond-rm:hover { background: rgba(0, 0, 0, 0.04); color: rgba(0, 0, 0, 0.75); }
+.rel-opt { display: inline-flex; align-items: center; gap: 6px; }
+.rel-type {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 16px;
+  color: #13c2c2;
+  min-width: 18px;
+}
+.rel-type.date { color: rgb(46, 116, 255); }
+.rel-type.num { color: #23c343; }
+.rel-acts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.rel-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: rgb(46, 116, 255);
+  font-size: 12px;
+  line-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rel-link.muted { color: rgba(0, 0, 0, 0.45); }
+.rel-link:hover { opacity: 0.85; }
+.rel-adv-panel { margin-top: 18px; }
+.rel-adv-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.rel-adv-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+.rel-help { color: rgba(0, 0, 0, 0.65); cursor: help; font-size: 14px; }
+.rel-adv-row { margin-bottom: 16px; }
+.rel-adv-label {
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.85);
+}
+.rel-adv-label .req { color: rgb(255, 110, 105); margin-right: 4px; }
+.rel-adv-pair {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.rel-adv-pair :deep(.arco-select) { flex: 1 0 136px; }
+.rel-colon {
+  flex: 0 0 32px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.65);
+}
+.rel-adv-hint { margin-top: 8px; font-size: 12px; line-height: 18px; }
+.rel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 20px;
+}
+.rel-toggle {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rel-toggle:hover { color: rgb(46, 116, 255); }
+.rel-ok {
+  height: 32px;
+  min-width: 64px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 4px;
+  background: rgb(46, 116, 255);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 22px;
+}
+.rel-ok:hover { filter: brightness(1.05); }
 .join-sheet {
   position: absolute;
   left: 12px;
@@ -2097,16 +2517,36 @@ const finishLabel = computed(() => {
   color: #555f6d;
 }
 .picked-item.on { background: var(--accent-soft); color: rgb(var(--accent)); }
+.picked-item em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 12px;
+  color: #86909c;
+  flex-shrink: 0;
+}
+.picked-item.on em { color: rgb(var(--accent)); }
+.field-tip {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #86909c;
+  line-height: 1.5;
+}
 .field-hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
 .field-hd-right { display: flex; align-items: center; gap: 8px; }
 .field-list { min-height: 0; flex: 1; overflow: auto; }
 .field-row {
   display: grid;
-  grid-template-columns: 28px minmax(160px, 1fr) 90px minmax(140px, 1fr);
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 90px;
   align-items: center;
   gap: 10px;
   padding: 8px 4px;
   border-bottom: 1px solid #eef2f7;
+}
+.field-row > * { min-width: 0; box-sizing: border-box; }
+.field-phy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .field-row.head { font-size: 12px; font-weight: 600; color: #667085; border-bottom-color: #d9e0e8; }
 .create-foot {
@@ -2206,6 +2646,7 @@ const finishLabel = computed(() => {
 }
 .flt-add:hover { background: rgba(46, 116, 255, 0.08); }
 .flt-chip {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 4px;

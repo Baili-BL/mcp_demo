@@ -212,4 +212,174 @@ footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
 .flow-side .tag {
   font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap;
 }
+.arch-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.arch-band {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  border-left: 4px solid var(--band, #c8c5be);
+}
+.arch-band.l1 { --band: #165dff; }
+.arch-band.l2 { --band: #722ed1; }
+.arch-band.l3 { --band: #d9480f; }
+.arch-band.l4 { --band: #0f8a5f; }
+.arch-band .lab {
+  font-size: 12px; font-weight: 600; letter-spacing: .12em;
+  color: var(--band); margin-bottom: 10px;
+}
+.arch-chips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.arch-chip {
+  background: #f4f3ef;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 88px;
+}
+.arch-chip b { display: block; font-size: 13px; color: var(--ink); font-weight: 600; }
+.arch-chip span { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+
+.arch-matrix {
+  display: grid;
+  grid-template-columns: 88px repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+.arch-mh, .arch-ml, .arch-cell {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.arch-mh {
+  padding: 10px 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  background: #f4f3ef;
+}
+.arch-ml {
+  padding: 12px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--band, var(--ink-2));
+  writing-mode: horizontal-tb;
+}
+.arch-ml.l1 { --band: #165dff; background: #eef4ff; }
+.arch-ml.l2 { --band: #722ed1; background: #f6efff; }
+.arch-ml.l3 { --band: #d9480f; background: #fff4ed; }
+.arch-ml.l4 { --band: #0f8a5f; background: #eef8f3; }
+.arch-cell {
+  padding: 10px 12px;
+  min-height: 88px;
+}
+.arch-cell b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.arch-cell span {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.arch-corner { background: transparent; border: none; }
+
+.uj-board {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px 16px 18px;
+  margin-top: 12px;
+}
+.uj-srow {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.uj-slab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.uj-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.uj-tag.admin { background: #fff1ea; color: var(--accent); }
+.uj-tag.user { background: #eef8f3; color: var(--ok); }
+.uj-track {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) 32px minmax(0, 1fr) 32px minmax(0, 1fr);
+  align-items: stretch;
+}
+.uj-node {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.uj-node .no {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--ink);
+  color: #fff; font-size: 10px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.uj-node .ttl { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 18px; }
+.uj-node .st { flex-basis: 100%; padding-left: 24px; font-size: 11px; color: var(--ink-3); line-height: 16px; }
+.uj-arr {
+  color: #c45c48;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.uj-arr i {
+  display: block;
+  width: 26px;
+  height: 12px;
+  background: currentColor;
+  clip-path: polygon(0 4.5px, 16px 4.5px, 16px 1px, 26px 6px, 16px 11px, 16px 7.5px, 0 7.5px);
+}
+.uj-arr.rev i { transform: scaleX(-1); }
+.uj-arr.down { align-self: stretch; justify-self: center; }
+.uj-arr.down i { transform: rotate(90deg); }
+.uj-hook { height: 28px; align-items: center; }
+.uj-hook > i { display: block; }
+
 @media (max-width: 720px) { .wrap { padding: 36px 20px 72px; } }
+@media (max-width: 860px) {
+  .arch-matrix {
+    overflow-x: auto;
+    grid-template-columns: 72px repeat(4, minmax(140px, 1fr));
+  }
+  .uj-board { overflow-x: auto; }
+}

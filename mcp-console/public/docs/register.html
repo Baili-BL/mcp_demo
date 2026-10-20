@@ -73,6 +73,34 @@
   </section>
 
   <section>
+    <h2>创建服务</h2>
+    <ol class="steps">
+      <li>数据源必须先在「数据准备 → 数据源」登记。</li>
+      <li>MCP 中心 → 创建 MCP 服务：名称、code、端点、协议，勾选本服务读取的数据源。</li>
+      <li>可勾选「创建后探测 tools/list」，把工具挂到本服务。</li>
+      <li>读受控数据集的服务须打开「透传身份」。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>创建工具（三条入口）</h2>
+    <ol class="steps">
+      <li>探测：从服务端点 <code>tools/list</code> 同步到工具目录。</li>
+      <li>手工：探测失败时在工具目录选「手工注册」，粘贴 Schema，可选申请读取多张数据集。</li>
+      <li>数据集：工具目录「数据集注册」选一张表、勾选字段，按类型自动生成 inputSchema 并申请读取；或在数据集页「发布工具」挂平台托管的 <code>dataset-hub-mcp</code>。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>创建工具集</h2>
+    <ol class="steps">
+      <li>MCP 中心 → MCP 工具集 → 创建（可先建空集）。</li>
+      <li>勾选各服务已登记的工具加入；探测完成后也可「创建并绑定工具集」。</li>
+      <li>再到「接入与密钥」把 Key 绑到该集和归属用户。没有工具集就发 Key，客户端拿到空列表。</li>
+    </ol>
+  </section>
+
+  <section>
     <h2>跨平台服务</h2>
     <p>一个 MCP 服务可以包装多个内部系统（例如数据分析 MCP 同时打 CRM 与数仓）。注册时必须声明：</p>
     <ul>
@@ -82,7 +110,7 @@
     </ul>
   </section>
 
-  <footer>产品设计 · 服务注册与工具注册 · 时序图阶段〇对应本节</footer>
+  <footer>产品设计 · 服务注册与工具注册 · 对照时序图「创建服务 / 创建工具 / 创建工具集」</footer>
 </div>
 </body>
 </html>

@@ -92,7 +92,7 @@ function openLink(svc) {
 }
 function submitLink() {
   setServiceSources(linkSvc.value, linkIds.value)
-  Message.success(`已更新「${linkSvc.value.name}」关联的数据源`)
+  Message.success(`已更新「${linkSvc.value.name}」关联的标签`)
   return true
 }
 function gotoSources() {
@@ -358,7 +358,7 @@ onDeactivated(() => {
             <a-table-column title="端点" :width="260">
               <template #cell="{ record }"><span class="mono" style="font-size:12px">{{ record.endpoint }}</span></template>
             </a-table-column>
-            <a-table-column title="所属系统" :width="160">
+            <a-table-column title="标签" :width="160">
               <template #cell="{ record }">
                 <a-space wrap>
                   <a-tag v-for="x in record.sources" :key="x" color="cyan">{{ x }}</a-tag>
@@ -403,7 +403,7 @@ onDeactivated(() => {
                 <a-dropdown v-else>
                   <a-button type="text" size="mini">更多 <icon-down /></a-button>
                   <template #content>
-                    <a-doption @click="openLink(record)">关联数据源</a-doption>
+                    <a-doption @click="openLink(record)">关联标签</a-doption>
                     <a-doption @click="debugSvc(record)">调试</a-doption>
                     <a-doption @click="confirmAct('重启服务', `确认重启 ${record.name}（${record.code}）？滚动重启不影响在途调用。`, '重启指令已下发（模拟）')">重启</a-doption>
                     <a-doption @click="confirmAct('下线服务', `下线后网关将停止向 ${record.name} 路由流量，确认？`, '已切流并下线（模拟）')">
@@ -442,7 +442,7 @@ onDeactivated(() => {
                 </a-space>
               </template>
             </a-table-column>
-            <a-table-column title="所属系统" :width="160">
+            <a-table-column title="标签" :width="160">
               <template #cell="{ record }">
                 <a-space wrap>
                   <a-tag v-for="p in platformsOfSet(record)" :key="p" color="cyan" size="small">{{ p }}</a-tag>
@@ -502,12 +502,12 @@ onDeactivated(() => {
         <a-form-item label="MCP 端点 URL" field="endpoint" required>
           <a-input v-model="form.endpoint" placeholder="https://mcp.futures-data.cn/test/mcp" class="mono" />
         </a-form-item>
-        <a-form-item label="关联数据源（所属系统）">
-          <a-select v-model="form.sourceIds" multiple allow-clear allow-search placeholder="选择本服务读取的已登记数据源" style="width:100%">
+        <a-form-item label="关联标签">
+          <a-select v-model="form.sourceIds" multiple allow-clear allow-search placeholder="选择要关联的标签" style="width:100%">
             <a-option v-for="s in store.sources" :key="s.id" :value="s.id">{{ s.name }}</a-option>
           </a-select>
           <template #extra>
-            数据源需先在 <a-link @click="gotoSources">数据管理 → 数据源</a-link> 登记；数据源页只读展示此关联。
+            标签来自已登记数据源，需先在 <a-link @click="gotoSources">数据准备 → 数据源</a-link> 登记。
           </template>
         </a-form-item>
         <a-form-item>
@@ -518,17 +518,17 @@ onDeactivated(() => {
 
     <a-modal
       v-model:visible="linkVisible"
-      :title="linkSvc ? `关联数据源 — ${linkSvc.name}` : '关联数据源'"
+      :title="linkSvc ? `关联标签 — ${linkSvc.name}` : '关联标签'"
       :width="520"
       ok-text="保存"
       unmount-on-close
       @before-ok="submitLink"
     >
-      <a-select v-model="linkIds" multiple allow-clear allow-search placeholder="选择本服务读取的数据源" style="width:100%">
+      <a-select v-model="linkIds" multiple allow-clear allow-search placeholder="选择要关联的标签" style="width:100%">
         <a-option v-for="s in store.sources" :key="s.id" :value="s.id">{{ s.name }}</a-option>
       </a-select>
       <p class="muted" style="margin:10px 0 0;font-size:12px">
-        服务与数据源的关联只在这里维护；没有的数据源请先到 <a-link @click="gotoSources">数据源</a-link> 登记。
+        服务与标签的关联只在这里维护；没有的标签请先到 <a-link @click="gotoSources">数据源</a-link> 登记。
       </p>
     </a-modal>
 

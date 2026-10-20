@@ -21,7 +21,7 @@ const selected = computed(() => store.sources.find((s) => s.id === activeId.valu
 const grouped = computed(() => {
   const q = sourceQuery.value.trim().toLowerCase()
   const cats = [
-    { category: '数据库', kinds: DATABASE_TYPES.filter((t) => t.type !== 'http').map((t) => t.type) },
+    { category: '数据库', kinds: DATABASE_TYPES.map((t) => t.type) },
     { category: '接口', kinds: ['http'] },
   ]
   return cats.map((c) => ({
@@ -190,7 +190,7 @@ onDeactivated(() => {
 
         <a-descriptions :column="2" size="medium" bordered style="margin-bottom: 16px">
           <a-descriptions-item label="数据源类型">{{ selectedConnector.label }}</a-descriptions-item>
-          <a-descriptions-item label="来源">{{ VENDOR_LABELS[selectedConnector.vendor] || selected.vendor || '—' }}</a-descriptions-item>
+          <a-descriptions-item v-if="VENDOR_LABELS[selectedConnector.vendor]" label="来源">{{ VENDOR_LABELS[selectedConnector.vendor] }}</a-descriptions-item>
           <a-descriptions-item v-if="selected.kind === 'mysql'" label="数据库版本">{{ selected.dbVersion || '—' }}</a-descriptions-item>
           <a-descriptions-item label="账号">{{ selected.user || '—' }}</a-descriptions-item>
           <a-descriptions-item label="环境变量"><span class="mono">{{ selected.envKey }}</span></a-descriptions-item>

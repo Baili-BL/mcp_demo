@@ -3,7 +3,7 @@ import { computed, provide, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
   store, findDataset, findGrant, getOrCreateGrant, saveDatasetGrant,
-  isMeasureColumn, hydrateRowPolicies, describeRowPolicy, rowRoot, rowLeaves,
+  isMeasureColumn, hydrateRowPolicies, describeRowPolicy, isRowGroup, rowRoot, rowLeaves,
 } from '../store'
 import DsMark from './icons/DsMark.vue'
 import RowCondGroup from './RowCondGroup.vue'
@@ -13,17 +13,16 @@ const props = defineProps({
   datasetId: { type: String, default: '' },
   policyId: { type: String, default: '' },
   openAdd: { type: Boolean, default: false },
+  embedded: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'saved'])
 
 const DIM_METHODS = [
   { value: 'enum', label: '枚举筛选' },
   { value: 'condition', label: '条件筛选' },
-  { value: 'tag', label: '标签绑定' },
 ]
 const MEA_METHODS = [
   { value: 'condition', label: '条件筛选' },
-  { value: 'tag', label: '标签绑定' },
 ]
 const ENUM_OPS = [
   { value: 'in', label: '包含' },
@@ -48,12 +47,6 @@ const MEA_OPS = [
   { value: '<=', label: '小于等于' },
   { value: 'between', label: '介于' },
 ]
-const TAG_KEYS = [
-  { value: 'team', label: '团队' },
-  { value: 'role', label: '角色' },
-  { value: 'name', label: '姓名' },
-]
-
 function uid(prefix = 'r') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 }
@@ -96,8 +89,6 @@ const draft = reactive({
 })
 const editing = ref(null)
 const whitelistOn = ref(false)
-const reuseOpen = ref(false)
-
 const ds = computed(() => findDataset(store, props.datasetId))
 const columns = computed(() => ds.value?.columns || [])
 const aclUsers = computed(() => store.users.filter((u) => u.status === '正常'))
@@ -107,8 +98,6 @@ const userGroups = computed(() => store.userGroups.map((g) => ({
   name: g.name,
   count: (g.memberIds || []).length,
 })))
-const reuseSources = computed(() => store.datasets.filter((d) => !d.deleted && d.id !== props.datasetId && (findGrant(store, d.id)?.row_policies || []).length))
-
 function colOf(name) {
   return columns.value.find((c) => c.column_name === name)
 }
@@ -121,6 +110,17 @@ function methodsOf(name) {
 function opsOf(cond) {
   if (cond.method === 'enum') return ENUM_OPS
   return measureOf(cond.column) ? MEA_OPS : DIM_OPS
+}
+function enumOptions(cond) {
+  const raw = colOf(cond?.column)?.sample_values
+  const list = Array.isArray(raw)
+    ? raw.map((x) => String(x).trim()).filter(Boolean)
+    : (typeof raw === 'string' && raw.trim() ? raw.split(/[,，]/).map((x) => x.trim()).filter(Boolean) : [])
+  for (const v of cond?.values || []) {
+    const s = String(v).trim()
+    if (s && !list.includes(s)) list.push(s)
+  }
+  return list
 }
 function userName(id) {
   return userMap.value.get(id)?.name || id
@@ -143,8 +143,22 @@ function fieldsText(p) {
 function visibleText(p) {
   return describeRowPolicy(p)
 }
+function stripTag(node) {
+  if (isRowGroup(node)) {
+    node.conditions = (node.conditions || []).map(stripTag)
+    return node
+  }
+  if (node.method === 'tag') {
+    node.method = 'condition'
+    node.op = '='
+    node.value = node.value || ''
+    node.tagKey = undefined
+  }
+  if (node.sub) node.sub = stripTag(node.sub)
+  return node
+}
 function withRoot(p) {
-  const root = clone(rowRoot(p))
+  const root = stripTag(clone(rowRoot(p)))
   if (!root.conditions.length) root.conditions.push(newCond())
   return { ...clone(p), blocks: [root] }
 }
@@ -169,7 +183,7 @@ watch(() => [props.visible, props.datasetId, props.policyId, props.openAdd], ([o
   if (!on) return
   hydrate()
   if (props.openAdd && !props.policyId) startAdd()
-})
+}, { immediate: true })
 
 function close() {
   emit('update:visible', false)
@@ -209,7 +223,7 @@ function cancelEdit() {
 function onColumnChange(cond, name) {
   cond.column = name
   const measure = measureOf(name)
-  if (measure && cond.method === 'enum') {
+  if (cond.method === 'tag' || (measure && cond.method === 'enum')) {
     cond.method = 'condition'
     cond.op = '='
     cond.values = []
@@ -222,23 +236,20 @@ function onMethodChange(cond, method) {
   if (method === 'enum') {
     cond.op = 'in'
     if (!Array.isArray(cond.values)) cond.values = []
-  } else if (method === 'tag') {
-    cond.tagKey = cond.tagKey || 'team'
   } else {
-    cond.op = measureOf(cond.column) ? '=' : '='
+    cond.op = '='
   }
 }
 
 provide('rowCtx', {
-  columns, ENUM_OPS, TAG_KEYS, maxDepth: 4,
-  uid, newCond, measureOf, methodsOf, opsOf,
+  columns, ENUM_OPS, maxDepth: 4,
+  uid, newCond, measureOf, methodsOf, opsOf, enumOptions,
   onColumnChange, onMethodChange,
 })
 
 function condValid(c) {
   if (!c.column) return false
   if (c.method === 'enum') return (c.values || []).some((v) => String(v).trim())
-  if (c.method === 'tag') return !!c.tagKey
   if (c.op === 'empty' || c.op === 'not_empty') return true
   if (c.op === 'between') return String(c.value || '').trim() && String(c.value2 || '').trim()
   return String(c.value || '').trim()
@@ -302,35 +313,23 @@ function saveAll() {
   close()
 }
 
-function reuseFrom(id) {
-  if (!id) return
-  const g = findGrant(store, id)
-  const policies = hydrateRowPolicies(g).map((p) => ({ ...clone(p), id: uid('p') }))
-  if (!policies.length) {
-    Message.warning('该数据集暂无行级规则')
-    return
-  }
-  draft.policies = policies
-  draft.other = g.row_other || 'all'
-  draft.join = g.row_join || 'and'
-  draft.whitelist = [...(g.row_whitelist || [])]
-  reuseOpen.value = false
-  Message.success('已复用规则')
-}
 </script>
 
 <template>
-  <a-drawer
-    :visible="visible"
-    :width="1080"
-    :footer="false"
-    unmount-on-close
-    popup-container="body"
-    class="perm-drawer"
+  <component
+    :is="embedded ? 'section' : 'a-drawer'"
+    v-bind="embedded ? { class: 'perm-embed' } : {
+      visible,
+      width: 1080,
+      footer: false,
+      unmountOnClose: true,
+      popupContainer: 'body',
+      class: 'perm-drawer',
+    }"
     @cancel="close"
     @update:visible="emit('update:visible', $event)"
   >
-    <template #title>
+    <template v-if="!embedded" #title>
       <div class="rs-title">
         <strong>行级权限</strong>
         <span v-if="ds" class="ds-chip">
@@ -339,28 +338,23 @@ function reuseFrom(id) {
         </span>
       </div>
     </template>
-    <div class="row-studio">
+    <div class="row-studio" :class="{ embed: embedded }">
+      <div v-if="embedded" class="embed-head">
+        <div class="rs-title">
+          <strong>行级权限</strong>
+          <span v-if="ds" class="ds-chip">
+            <DsMark />
+            {{ ds.display_name }}
+          </span>
+        </div>
+        <a-button @click="close">返回列表</a-button>
+      </div>
       <div class="rs-body">
         <div class="rs-toolbar">
           <label class="en">
             <a-switch v-model="draft.enabled" size="small" />
             启用行级权限
           </label>
-          <span class="tb-right">
-            <button type="button" class="link" @click="Message.info('行级权限：为赋权对象配置可见内容筛选，白名单用户不受规则限制。')">
-              <icon-question-circle /> 查看帮助
-            </button>
-            <a-dropdown v-model:popup-visible="reuseOpen" :disabled="!reuseSources.length" @select="reuseFrom">
-              <a-button>
-                <template #icon><icon-copy /></template>
-                规则复用
-              </a-button>
-              <template #content>
-                <a-doption v-for="d in reuseSources" :key="d.id" :value="d.id">{{ d.display_name }}</a-doption>
-                <a-doption v-if="!reuseSources.length" disabled>暂无可复用规则</a-doption>
-              </template>
-            </a-dropdown>
-          </span>
         </div>
 
         <div class="rs-subbar">
@@ -492,7 +486,7 @@ function reuseFrom(id) {
         <a-button v-else type="primary" @click="saveAll">保存</a-button>
       </footer>
     </div>
-  </a-drawer>
+  </component>
 </template>
 
 <style scoped>
@@ -504,6 +498,22 @@ function reuseFrom(id) {
   margin: -16px -20px -20px;
   color: rgb(12, 13, 14);
 }
+.row-studio.embed {
+  height: auto;
+  min-height: calc(100vh - 148px);
+  margin: 0;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.embed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e5e6eb;
+}
 .rs-title {
   display: flex;
   align-items: center;
@@ -514,9 +524,7 @@ function reuseFrom(id) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 10px 2px 6px;
-  border-radius: 4px;
-  background: #f3e8ff;
+  padding: 2px 0;
   color: #722ed1;
   font-size: 13px;
 }
@@ -558,8 +566,6 @@ function reuseFrom(id) {
   font-size: 14px;
 }
 .rs-subbar { justify-content: flex-end; }
-.tb-right { display: inline-flex; align-items: center; gap: 16px; }
-.tb-right .link { display: inline-flex; align-items: center; gap: 4px; }
 .other {
   display: inline-flex;
   align-items: center;

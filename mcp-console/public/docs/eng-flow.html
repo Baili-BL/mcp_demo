@@ -17,7 +17,7 @@
 
   <section>
     <h2>总览</h2>
-    <p>四段不可颠倒：摸清上游 → 写工具并自测 → 在管理台登记服务与工具 → 挂联调密钥并打开鉴权。</p>
+    <p>四段不可颠倒：摸清上游 → 写工具并自测 <b>或</b> 建数据集并配 Grant → 在管理台登记服务与工具 → 挂联调密钥并打开鉴权。</p>
     <div class="flow">
       <div class="flow-legend">
         <span><i class="lg-end"></i>起止</span>
@@ -143,7 +143,20 @@
         <tr><td>8–10 密钥与观测</td><td>管理员签发，开发盯日志</td><td>联调 Key、鉴权开启、告警规则</td></tr>
       </tbody>
     </table>
-    <div class="callout"><b>和时序图的关系：</b>本图是开发侧的决策流；顶部「时序图」阶段 ⓪ 是同一段在角色之间的消息流。代码约定见《MCP 服务代码规范》。</div>
+    <div class="callout"><b>和时序图的关系：</b>本图是开发侧的决策流；顶部「时序图」阶段 ⓪ 与 ① 是同一段在角色之间的消息流。代码约定见《MCP 服务代码规范》。</div>
+  </section>
+
+  <section>
+    <h2>数据集路径（不写新工具）</h2>
+    <p>已有表要按人过滤时，不必再写 FastMCP。顺序与时序图阶段 ① 一致：</p>
+    <ol class="steps">
+      <li>登记数据源并同步 schema，确认只读账号与超时。</li>
+      <li>建数据集：单表、同库模型 JOIN，或 SQL + 占位符。禁止跨源 JOIN。</li>
+      <li>配行策略与列策略，保存 DatasetGrant。</li>
+      <li>发布到 <code>dataset-hub-mcp</code>，或让既有工具申请读取并生成中间视图（服务须透传身份）。</li>
+      <li>编入工具集后再发联调 Key。查询时用 Key 归属用户编译 Grant。</li>
+    </ol>
+    <div class="callout">发布工具与 <code>query_dataset</code> 必须走同一套 Grant。保存策略时不要把「无调用人」编译出的 SQL 当成最终过滤。</div>
   </section>
 
   <section>
@@ -152,10 +165,11 @@
       <li><b>跨库</b>：CRM 与数仓不在同一实例时，拆 <code>search_crm_*</code> 与 <code>query_warehouse</code>，由 Agent 连续调用。</li>
       <li><b>目录不一致</b>：<code>tools/list</code> 对不上就保持待发布，不要靠手工目录骗过客户端。</li>
       <li><b>生产鉴权</b>：<code>MCP_AUTH_REQUIRED=0</code> 只允许本机。预发和生产必须校验 Key、配额与到期。</li>
+      <li><b>数据集身份</b>：未透传调用人时禁止把读取标成受控；Playground 也必须从 Key 取 <code>user_id</code>。</li>
     </ol>
   </section>
 
-  <footer>开发规范 · 工程开发流程图 · 对照时序图阶段〇与 MCP 服务代码规范</footer>
+  <footer>开发规范 · 工程开发流程图 · 对照时序图阶段〇、阶段一与 MCP 服务代码规范</footer>
 </div>
 </body>
 </html>

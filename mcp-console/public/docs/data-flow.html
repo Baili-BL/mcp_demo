@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据流</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap wide">
+  <p class="kicker">Product Design · 数据流</p>
+  <h1>数据流</h1>
+  <p class="lede">
+    配置面写 Grant 与工具目录；运行面用 Key 取出调用人，再决定能不能看见行和列。
+    <strong>两面必须读同一份权限定义</strong>。
+  </p>
+
+  <section>
+    <h2>总览</h2>
+    <p>先在管理台把源、集、权限和工具写好；调用时从 Key 取用户，再按工具类型打库。数据集路径必须用调用人现场编译 Grant，禁止用「无调用人」时的 SQL 当最终 WHERE。</p>
+    <div class="flow">
+      <div class="flow-legend">
+        <span><i class="lg-end"></i>起止</span>
+        <span><i class="lg-box"></i>动作</span>
+        <span><i class="lg-dia"></i>决策</span>
+      </div>
+
+      <div class="flow-col">
+        <div class="flow-node start"><div class="hd">开始</div><div class="s">管理员配置，或用户带着 Key 提问</div></div>
+        <div class="flow-v"></div>
+
+        <div class="flow-phase p1">一 · 配置面（写同一份权限）</div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">1</span>登记数据源</div>
+          <div class="s">DSN · 只读账号 · 测试连接 · 同步 schema<br>创建服务时只能勾已登记的源</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">2</span>建数据集</div>
+          <div class="s">表 / 同库模型 JOIN / SQL + 占位符<br>禁止跨源 JOIN；发布数据集工具的前置</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">3</span>保存 DatasetGrant</div>
+          <div class="s">行策略 · 列策略 · 白名单 · 未匹配兜底 · 协作者</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node warn">
+          <div class="hd"><span class="n">4</span>只存策略定义</div>
+          <div class="s">运行时用调用人编译 WHERE / 列掩码<br>不要把「无调用人」时的 SQL 当成最终过滤</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>工具怎么挂上数据集？</span></div></div>
+        <div class="flow-fork">
+          <div class="flow-arm yes">
+            <b>发布数据集工具</b>
+            <div class="box">挂 dataset-hub-mcp<br>Schema 随 Grant 走</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm no">
+            <b>既有工具申请读取</b>
+            <div class="box">批准后生成中间视图<br>服务须已透传身份</div>
+          </div>
+        </div>
+        <div class="flow-join"></div>
+        <div class="flow-v long"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">5</span>编入工具集并发 Key</div>
+          <div class="s">Key 归属用户、绑定工具集；配置面到此可被调用</div>
+        </div>
+        <div class="flow-v"></div>
+
+        <div class="flow-phase p2">二 · 运行面（从 Key 取人）</div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">6</span>tools/call</div>
+          <div class="s">客户端带 Authorization: Bearer &lt;API Key&gt;</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>Key 有效且绑了工具集？</span></div></div>
+        <div class="flow-fork">
+          <div class="flow-arm no">
+            <b>否</b>
+            <div class="box">拒绝 AUTH_FAIL<br>无 Key / 错 Key / 过期 / 未绑集</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm yes">
+            <b>是</b>
+            <div class="box">取出 user_id 与工具集<br>只允许调集内工具</div>
+          </div>
+        </div>
+        <div class="flow-v long"></div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>指标工具还是数据集？</span></div></div>
+        <div class="flow-fork">
+          <div class="flow-arm yes">
+            <b>指标工具</b>
+            <div class="box">按 source 打 METRIC_DSN<br>一工具一上游，不套 Grant</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm no">
+            <b>数据集工具</b>
+            <div class="box">用 user_id 编译 Grant<br>再打该集所在源</div>
+          </div>
+        </div>
+        <div class="flow-join"></div>
+        <div class="flow-v long"></div>
+
+        <div class="flow-phase p3">三 · Grant 编译（仅数据集路径）</div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>行白名单命中？</span></div></div>
+        <div class="flow-fork">
+          <div class="flow-arm yes">
+            <b>是</b>
+            <div class="box">不过滤行<br>看见全部行</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm no">
+            <b>否</b>
+            <div class="box">按主体匹配策略<br>全员 / 用户 / 用户组</div>
+          </div>
+        </div>
+        <div class="flow-v long"></div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>行策略匹配到？</span></div></div>
+        <div class="flow-fork">
+          <div class="flow-arm yes">
+            <b>是</b>
+            <div class="box">AND / OR 拼成 WHERE</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm no">
+            <b>否 · 看 row_other</b>
+            <div class="box">none → 空集<br>默认 → 全部行</div>
+          </div>
+        </div>
+        <div class="flow-join"></div>
+        <div class="flow-v long"></div>
+        <div class="flow-dia-wrap"><div class="flow-dia"><span>列白名单命中？</span></div></div>
+        <div class="flow-fork">
+          <div class="flow-arm yes">
+            <b>是</b>
+            <div class="box">全部列可见<br>不隐藏、不脱敏</div>
+          </div>
+          <div class="rail"></div>
+          <div class="flow-arm no">
+            <b>否</b>
+            <div class="box">隐藏或脱敏<br>未点名列看 col_other</div>
+          </div>
+        </div>
+        <div class="flow-join"></div>
+        <div class="flow-v long"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">7</span>打该集所在源</div>
+          <div class="s">已套行过滤 + 列掩码；看不见的行/列不会出现</div>
+        </div>
+        <div class="flow-v"></div>
+
+        <div class="flow-phase p4">四 · 回写</div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">8</span>写调用日志</div>
+          <div class="s">调用人 · 工具 · 耗时 · 行数 · 是否受控</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node">
+          <div class="hd"><span class="n">9</span>回管理台监控</div>
+          <div class="s">调用监控 / 告警 / 关系树三边核对</div>
+        </div>
+        <div class="flow-v"></div>
+        <div class="flow-node end"><div class="hd">结束</div><div class="s">客户端只拿到该用户可见的结果</div></div>
+      </div>
+    </div>
+    <div class="callout">Playground 与真实客户端同一条规则：从 Key 取用户，禁止匿名预览绕过行过滤。</div>
+  </section>
+
+  <footer>产品设计 · 数据流 · 对照时序图「用户权限」与「接入调用」</footer>
+</div>
+</body>
+</html>

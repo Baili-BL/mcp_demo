@@ -1,96 +1,112 @@
 <script setup>
 import { computed } from 'vue'
-import { store, totalCalls, weightedSR, openAlertCount } from '../store'
-import { fmt } from '../utils'
-import LineChart from '../components/LineChart.vue'
+import { store, openAlertCount } from '../store'
 
 const emit = defineEmits(['goto'])
-const onSvc = computed(() => store.services.filter((s) => s.health === 'healthy').length)
-const onTools = computed(() => store.tools.filter((t) => t.on).length)
-const top = computed(() => {
-  const list = [...store.tools].sort((a, b) => b.calls - a.calls).slice(0, 10)
-  const mx = list[0]?.calls || 1
-  return list.map((t) => ({ ...t, pct: (t.calls / mx) * 100 }))
-})
-const stColor = (st) => (st === '未处理' ? 'red' : st === '已确认' ? 'arcoblue' : 'gray')
+
+const grantCount = computed(() => store.datasetGrants.filter((g) => {
+  const rows = (g.row_policies || []).length
+  const cols = (g.col_policies || []).length || (g.columns || []).length
+  return rows + cols > 0 || g.row_enabled
+}).length)
+const userOn = computed(() => store.users.filter((u) => u.status === '正常').length)
+const keyOn = computed(() => store.clients.filter((c) => c.status !== 'revoked').length)
+
+const ROW1 = computed(() => [
+  { no: '1', title: '登记数据源', desc: `${store.sources.length} 个源`, goto: 'sources', tone: 'blue' },
+  { no: '2', title: '创建数据集', desc: `${store.datasets.length} 个集`, goto: 'datasets', tone: 'cyan' },
+  { no: '3', title: '配置权限', desc: `${grantCount.value} 份 Grant`, goto: 'security', tone: 'purple' },
+  { no: '4', title: '创建服务', desc: `${store.services.length} 个服务`, goto: 'services', tab: 'services', tone: 'blue' },
+])
+
+const ROW2 = computed(() => [
+  { no: '8', title: '签发密钥', desc: `${keyOn.value} 把 Key`, goto: 'clients', tone: 'rose' },
+  { no: '7', title: '开通用户', desc: `${userOn.value} 人已开通`, goto: 'users', tone: 'orange' },
+  { no: '6', title: '创建工具集', desc: `${store.toolsets.length} 个工具集`, goto: 'services', tab: 'toolsets', tone: 'green' },
+  { no: '5', title: '创建工具', desc: `${store.tools.length} 个工具`, goto: 'tools', tone: 'cyan' },
+])
+
+const ROW3 = computed(() => [
+  { no: '9', title: '粘贴配置', desc: 'url + Bearer', goto: 'clients', tone: 'blue' },
+  { no: '10', title: '提问调用', desc: '只见工具集内', goto: 'tools', tone: 'cyan' },
+  { no: '11', title: '受控结果', desc: '按人套 Grant', goto: 'security', tone: 'purple' },
+  { no: '12', title: '调用监控', desc: `告警 ${openAlertCount()}`, goto: 'monitor', tone: 'blue' },
+])
+
+function go(step) {
+  if (step.tab) store.hubTab = step.tab
+  emit('goto', step.goto)
+}
 </script>
 
 <template>
-  <div>
+  <div class="home-guide">
     <div class="page-head">
       <div>
-        <h2>概览</h2>
-        <div class="desc">MCP 数据面运行全貌：服务健康、工具目录、调用与告警</div>
+        <h2>首页</h2>
+        <div class="desc">按 S 形走完用户旅程：配置折返到开通，再交给用户调用。</div>
+      </div>
+      <a-button type="outline" size="small" @click="emit('goto', 'sequence')">看时序图</a-button>
+    </div>
+
+    <div class="hf-board">
+      <div class="hf-srow">
+        <div class="hf-slab"><span class="hf-tag admin">管理员</span>配置</div>
+        <div class="hf-track">
+          <template v-for="(s, i) in ROW1" :key="s.no">
+            <span v-if="i" class="hf-arr" aria-hidden="true"><i></i></span>
+            <button type="button" class="hf-node" :class="'tone-' + s.tone" @click="go(s)">
+              <span class="no">{{ s.no }}</span>
+              <span class="ttl">{{ s.title }}</span>
+              <span class="st">{{ s.desc }}</span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <div class="hf-srow">
+        <div class="hf-slab"></div>
+        <div class="hf-track hf-hook-track">
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+          <span class="hf-arr down" aria-hidden="true"><i></i></span>
+        </div>
+      </div>
+
+      <div class="hf-srow">
+        <div class="hf-slab"><span class="hf-tag admin">管理员</span>开通</div>
+        <div class="hf-track">
+          <template v-for="(s, i) in ROW2" :key="s.no">
+            <span v-if="i" class="hf-arr rev" aria-hidden="true"><i></i></span>
+            <button type="button" class="hf-node" :class="'tone-' + s.tone" @click="go(s)">
+              <span class="no">{{ s.no }}</span>
+              <span class="ttl">{{ s.title }}</span>
+              <span class="st">{{ s.desc }}</span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <div class="hf-srow">
+        <div class="hf-slab"></div>
+        <div class="hf-track hf-hook-track">
+          <span class="hf-arr down" aria-hidden="true"><i></i></span>
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
+
+      <div class="hf-srow">
+        <div class="hf-slab"><span class="hf-tag user">用户</span>调用</div>
+        <div class="hf-track">
+          <template v-for="(s, i) in ROW3" :key="s.no">
+            <span v-if="i" class="hf-arr" aria-hidden="true"><i></i></span>
+            <button type="button" class="hf-node" :class="'tone-' + s.tone" @click="go(s)">
+              <span class="no">{{ s.no }}</span>
+              <span class="ttl">{{ s.title }}</span>
+              <span class="st">{{ s.desc }}</span>
+            </button>
+          </template>
+        </div>
       </div>
     </div>
-    <a-row :gutter="16" style="margin-bottom: 8px">
-      <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card tone-blue" :bordered="false" hoverable @click="emit('goto', 'services')">
-          <div class="stat-ico"><icon-storage /></div>
-          <a-statistic title="在线服务" :value="onSvc" :value-style="{ fontWeight: 600 }">
-            <template #suffix><span style="font-size:15px;color:var(--color-text-3)"> / {{ store.services.length }}</span></template>
-          </a-statistic>
-          <div class="stat-foot"><a-badge status="warning" /> 研报知识服务降级中</div>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card tone-cyan" :bordered="false" hoverable @click="emit('goto', 'tools')">
-          <div class="stat-ico"><icon-list /></div>
-          <a-statistic title="注册工具" :value="store.tools.length" />
-          <div class="stat-foot"><a-badge status="success" /> 启用 {{ onTools }} · 停用 {{ store.tools.length - onTools }}</div>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card tone-purple" :bordered="false" hoverable @click="emit('goto', 'monitor')">
-          <div class="stat-ico"><icon-bar-chart /></div>
-          <a-statistic title="今日调用量" :value="totalCalls()" :value-style="{ fontWeight: 600 }" />
-          <div class="stat-foot">较昨日 <span class="up">▲ 8.6%</span></div>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card tone-green" :bordered="false" hoverable @click="emit('goto', 'monitor')">
-          <div class="stat-ico"><icon-safe /></div>
-          <a-statistic title="调用成功率" :precision="1" :value="weightedSR()" suffix="%" />
-          <div class="stat-foot">SLA 目标 ≥ 99.0%</div>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :sm="12" :lg="8" :flex="1" style="margin-bottom: 16px; min-width: 180px">
-        <a-card class="stat-card tone-orange" :bordered="false" hoverable @click="emit('goto', 'monitor')">
-          <div class="stat-ico"><icon-dashboard /></div>
-          <a-statistic title="P95 延迟" :value="486" suffix="ms" />
-          <div class="stat-foot">较昨日 <span class="up">▼ 32ms</span></div>
-        </a-card>
-      </a-col>
-    </a-row>
-    <a-row :gutter="16">
-      <a-col :xs="24" :lg="16" style="margin-bottom: 16px">
-        <a-card title="24 小时调用趋势" :bordered="false">
-          <template #extra>
-            <a-button type="text" size="mini" @click="emit('goto', 'monitor')">查看监控</a-button>
-          </template>
-          <LineChart :labels="store.trend.labels" :series="store.trend.series" />
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :lg="8" style="margin-bottom: 16px">
-        <a-card title="工具调用 Top 10" :bordered="false">
-          <template #extra><span class="muted">今日累计</span></template>
-          <div v-for="t in top" :key="t.name" class="hbar" @click="emit('goto', 'tools')">
-            <span class="nm" :title="t.name">{{ t.name }}</span>
-            <span class="tr"><i :style="{ width: t.pct.toFixed(0) + '%' }"></i></span>
-            <span class="vl">{{ fmt(t.calls) }}</span>
-          </div>
-        </a-card>
-      </a-col>
-    </a-row>
-    <a-card title="最近告警" :bordered="false">
-      <template #extra><a-button type="text" @click="emit('goto', 'alerts')">查看全部 →</a-button></template>
-      <div class="muted" style="margin-bottom: 4px">未处理 {{ openAlertCount() }} 条 · 点击进入告警中心</div>
-      <div v-for="a in store.alerts.slice(0, 4)" :key="a.t + a.obj" class="alert-row" @click="emit('goto', 'alerts')">
-        <span class="tm">{{ a.t }}</span>
-        <a-tag :color="a.tag" size="small">{{ a.level }}</a-tag>
-        <div class="ct"><b>{{ a.obj }}</b>　{{ a.ct }}</div>
-        <a-tag :color="stColor(a.st)" size="small">{{ a.st }}</a-tag>
-      </div>
-    </a-card>
   </div>
 </template>

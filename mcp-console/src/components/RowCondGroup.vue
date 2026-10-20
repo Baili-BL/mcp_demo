@@ -73,21 +73,24 @@ const canNest = () => props.depth < ctx.maxDepth - 1
             <a-select v-if="node.method === 'enum'" v-model="node.op" size="small">
               <a-option v-for="o in ctx.ENUM_OPS" :key="o.value" :value="o.value">{{ o.label }}</a-option>
             </a-select>
-            <a-select v-else-if="node.method === 'condition'" v-model="node.op" size="small">
+            <a-select v-else v-model="node.op" size="small">
               <a-option v-for="o in ctx.opsOf(node)" :key="o.value" :value="o.value">{{ o.label }}</a-option>
             </a-select>
-            <span v-else class="op-fixed">等于用户</span>
 
             <div class="val">
-              <a-input-tag
+              <a-select
                 v-if="node.method === 'enum'"
                 v-model="node.values"
-                size="small"
+                multiple
+                allow-search
+                allow-create
                 allow-clear
-                unique-value
-                placeholder="输入后回车添加"
-              />
-              <template v-else-if="node.method === 'condition'">
+                size="small"
+                placeholder="搜索并选择枚举值"
+              >
+                <a-option v-for="s in ctx.enumOptions(node)" :key="s" :value="s">{{ s }}</a-option>
+              </a-select>
+              <template v-else>
                 <span v-if="node.op === 'empty' || node.op === 'not_empty'" class="muted">无需填写值</span>
                 <div v-else class="val-pair">
                   <a-input v-model="node.value" size="small" :placeholder="node.op === 'between' ? '起始值' : '值'" />
@@ -97,9 +100,6 @@ const canNest = () => props.depth < ctx.maxDepth - 1
                   </template>
                 </div>
               </template>
-              <a-select v-else v-model="node.tagKey" size="small">
-                <a-option v-for="t in ctx.TAG_KEYS" :key="t.value" :value="t.value">{{ t.label }}标签</a-option>
-              </a-select>
             </div>
 
             <div class="row-ops">
@@ -192,7 +192,6 @@ const canNest = () => props.depth < ctx.maxDepth - 1
   align-items: center;
   gap: 8px;
 }
-.op-fixed { font-size: 12px; color: #86909c; padding-left: 4px; }
 .opt-kind { margin-left: 6px; font-size: 12px; color: #a0a7b4; }
 .val { min-width: 0; }
 .val-pair { display: flex; align-items: center; gap: 6px; }

@@ -65,11 +65,77 @@ defineProps({
       <rect x="4" y="4" width="24" height="24" rx="6" fill="#C8161D"/>
       <text x="16" y="21" text-anchor="middle" fill="#fff" font-size="13" font-weight="700" font-family="PingFang SC, Microsoft YaHei, sans-serif">达</text>
     </svg>
-    <!-- HTTP -->
-    <svg v-else-if="type === 'http'" viewBox="0 0 32 32" fill="none">
-      <circle cx="16" cy="16" r="11" stroke="#165DFF" stroke-width="2"/>
-      <ellipse cx="16" cy="16" rx="5.5" ry="11" stroke="#165DFF" stroke-width="1.6"/>
-      <path d="M5.5 16h21M7.2 11h17.6M7.2 21h17.6" stroke="#165DFF" stroke-width="1.5"/>
+    <svg v-else-if="type === 'presto'" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="11" fill="#1399D6"/>
+      <path d="M10 20.5 16 9.2l6 11.3H10z" fill="#fff"/>
+    </svg>
+    <svg v-else-if="type === 'impala'" viewBox="0 0 32 32" fill="none">
+      <path d="M16 4 27 28H5L16 4z" fill="#7389A9"/>
+      <path d="M16 11 22.5 25h-13L16 11z" fill="#fff"/>
+    </svg>
+    <svg v-else-if="type === 'sparksql'" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="11" fill="#E25A1C"/>
+      <path d="M16 8.5 19.2 15l6.3.4-5.2 4.2 1.6 6.1L16 22.3l-5.9 3.4 1.6-6.1-5.2-4.2 6.3-.4L16 8.5z" fill="#fff"/>
+    </svg>
+    <svg v-else-if="type === 'mariadb'" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="6" fill="#F6FBFD"/>
+      <path d="M7 21c2 4.4 6.2 6.6 11.2 6.6 6.2 0 10.4-4.2 10.4-9 0-3.4-2-6.2-5.4-7.4 1.6 3.2.6 6.8-2.4 8.2-2.8 1.2-6.2.2-7.6-2.4C12 19.4 9.8 17.2 8.6 14.4 8.2 16.2 8.2 19 7 21z" fill="#C49A3C"/>
+    </svg>
+    <svg v-else-if="type === 'elasticsearch'" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="11" fill="#FEC514"/>
+      <path d="M8 12.2h16M8 16h16M8 19.8h16" stroke="#343741" stroke-width="2.2" stroke-linecap="round"/>
+    </svg>
+    <svg v-else-if="type === 'hana'" viewBox="0 0 32 32" fill="none">
+      <rect x="4" y="8" width="24" height="16" rx="2" fill="#0A6ED1"/>
+      <path d="M8 16h16M16 10v12" stroke="#fff" stroke-width="2"/>
+    </svg>
+    <svg v-else-if="type === 'sybase'" viewBox="0 0 32 32" fill="none">
+      <rect x="5" y="6" width="22" height="20" rx="3" fill="#6B4C9A"/>
+      <text x="16" y="20" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">IQ</text>
+    </svg>
+    <svg v-else-if="type === 'hbase'" viewBox="0 0 32 32" fill="none">
+      <path d="M6 22 16 6l10 16H6z" fill="#6D6E70"/>
+      <path d="M11 22 16 12l5 10H11z" fill="#fff"/>
+    </svg>
+    <svg v-else-if="type === 'selectdb'" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="11" fill="#1A73E8"/>
+      <path d="M10 20c2.4-6 12-6 12 0" stroke="#fff" stroke-width="2.2" fill="none"/>
+      <circle cx="16" cy="13" r="2.2" fill="#fff"/>
+    </svg>
+    <svg v-else-if="type === 'greenplum'" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="11" fill="#2E7D32"/>
+      <circle cx="16" cy="16" r="5" fill="#fff"/>
+    </svg>
+    <svg v-else-if="type === 'shentong'" viewBox="0 0 32 32" fill="none">
+      <rect x="4" y="4" width="24" height="24" rx="6" fill="#2F6BFF"/>
+      <text x="16" y="21" text-anchor="middle" fill="#fff" font-size="13" font-weight="700" font-family="PingFang SC, Microsoft YaHei, sans-serif">神</text>
+    </svg>
+    <svg v-else-if="type === 'db2'" viewBox="0 0 32 32" fill="none">
+      <rect x="5" y="7" width="22" height="18" rx="2" fill="#054ADA"/>
+      <text x="16" y="20" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">DB2</text>
+    </svg>
+    <svg v-else-if="type === 'vertica'" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="6" fill="#E8EEF5"/>
+      <text x="16" y="20" text-anchor="middle" fill="#5B6770" font-size="8" font-weight="700">VERT</text>
+    </svg>
+    <svg v-else-if="type === 'kingbase'" viewBox="0 0 32 32" fill="none">
+      <path d="M8 24 16 6l8 18H8z" fill="#E85D04"/>
+    </svg>
+    <svg v-else-if="type === 'gbase'" viewBox="0 0 32 32" fill="none">
+      <text x="2" y="21" fill="#C41230" font-size="11" font-weight="700" font-family="Arial, sans-serif">G8a</text>
+    </svg>
+    <svg v-else-if="type === 'snowflake'" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="11" fill="#29B5E8"/>
+      <path d="M16 7v18M8.5 11.5l15 9M8.5 20.5l15-9" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <svg v-else-if="type === 'kylin'" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="11" fill="#F59E0B"/>
+      <path d="M11 20c2-7 8-7 10 0" stroke="#fff" stroke-width="2" fill="none"/>
+      <circle cx="16" cy="12" r="2" fill="#fff"/>
+    </svg>
+    <svg v-else-if="type === 'unicorn'" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="17" r="8" fill="#6B7280"/>
+      <path d="M16 4 19 14h-6L16 4z" fill="#9CA3AF"/>
     </svg>
     <svg v-else viewBox="0 0 32 32" fill="none">
       <rect x="5" y="7" width="22" height="18" rx="3" fill="#86909C"/>

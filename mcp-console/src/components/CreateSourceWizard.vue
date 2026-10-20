@@ -300,7 +300,8 @@ async function copyWhitelist() {
     v-if="typeModal"
     :visible="true"
     title="选择数据库类型"
-    :width="880"
+    modal-class="type-picker-modal"
+    :width="1080"
     :footer="false"
     unmount-on-close
     :mask-closable="false"
@@ -310,9 +311,9 @@ async function copyWhitelist() {
       v-model="typeQuery"
       allow-clear
       placeholder="搜索类型，如 MySQL / ClickHouse / Hive"
-      style="margin-bottom: 16px"
+      class="type-search"
     />
-    <div class="type-grid">
+    <div class="type-board">
       <button
         v-for="t in visibleTypes"
         :key="t.type"
@@ -322,11 +323,10 @@ async function copyWhitelist() {
         @click="chooseType(t)"
       >
         <DbTypeIcon :type="t.type" />
-        <div class="type-name">{{ t.label }}</div>
-        <div class="muted">{{ t.desc }} · {{ t.port }}</div>
+        <span class="type-name">{{ t.label }}</span>
       </button>
+      <a-empty v-if="!visibleTypes.length" description="没有匹配的数据库类型" />
     </div>
-    <a-empty v-if="!visibleTypes.length" description="没有匹配的数据库类型" />
   </a-modal>
 
   <a-modal
@@ -464,26 +464,55 @@ async function copyWhitelist() {
 </template>
 
 <style scoped>
-.type-grid {
+.type-search { margin-bottom: 16px; }
+.type-board {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   max-height: 460px;
   overflow: auto;
-  padding-right: 4px;
+  padding: 4px 2px 8px;
+  margin: 0 -4px;
+  background: #f5f8fc;
+  border-radius: 8px;
 }
 .type-card {
+  display: flex;
+  align-items: center;
+  height: 70px;
+  padding: 0;
+  margin: 0;
   text-align: left;
-  border: 1px solid var(--color-border-2);
-  border-radius: 10px;
-  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
   background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
   cursor: pointer;
-  min-height: 96px;
 }
-.type-card:hover:not(.disabled) { border-color: rgb(var(--primary-6)); }
+.type-card:hover:not(.disabled) { border-color: rgb(46, 116, 255); }
 .type-card.disabled { opacity: 0.55; cursor: not-allowed; }
-.type-name { font-weight: 600; margin-bottom: 4px; }
+.type-card :deep(.db-ico) {
+  width: 24px;
+  height: 24px;
+  margin: 0 12px 0 16px;
+}
+.type-card :deep(.db-ico svg) {
+  width: 24px;
+  height: 24px;
+}
+.type-name {
+  flex: 1;
+  min-width: 0;
+  padding-right: 12px;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
 .form-toolbar { display: flex; justify-content: flex-end; margin: -8px 0 4px; }
 .form-actions {
   display: flex;
@@ -491,7 +520,25 @@ async function copyWhitelist() {
   gap: 8px;
   padding-top: 8px;
 }
-@media (max-width: 900px) {
-  .type-grid { grid-template-columns: 1fr 1fr; }
+@media (max-width: 1100px) {
+  .type-board { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 700px) {
+  .type-board { grid-template-columns: 1fr 1fr; }
+}
+</style>
+
+<style>
+.type-picker-modal .arco-modal-header {
+  border-bottom: none;
+}
+.type-picker-modal .arco-modal-title {
+  width: 100%;
+  justify-content: center;
+  font-weight: 500;
+}
+.type-picker-modal .arco-modal-body {
+  padding-top: 4px;
+  background: #fff;
 }
 </style>

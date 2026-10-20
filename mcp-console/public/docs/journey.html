@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用户旅程</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap wide">
+  <p class="kicker">Product Design · 旅程</p>
+  <h1>用户旅程</h1>
+  <p class="lede">
+    按 <strong>S 形</strong>走完整条流程：管理员先配源、集、权限和服务，折返去建工具、工具集并开通发 Key，再把配置交给用户调用。
+  </p>
+
+  <section>
+    <h2>总览</h2>
+    <p>第一行从左到右，右侧折返；第二行从右到左；左侧再向右进入用户调用。箭头方向即行走方向。</p>
+    <div class="uj-board">
+      <div class="uj-srow">
+        <div class="uj-slab"><span class="uj-tag admin">管理员</span>配置</div>
+        <div class="uj-track">
+          <div class="uj-node"><span class="no">1</span><span class="ttl">登记数据源</span><span class="st">DSN · 只读 · 同步 schema</span></div>
+          <span class="uj-arr" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">2</span><span class="ttl">创建数据集</span><span class="st">表 / 模型 / SQL</span></div>
+          <span class="uj-arr" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">3</span><span class="ttl">配置权限</span><span class="st">行过滤 · 列掩码 · 协作者</span></div>
+          <span class="uj-arr" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">4</span><span class="ttl">创建服务</span><span class="st">端点 · 勾数据源 · 透传身份</span></div>
+        </div>
+      </div>
+
+      <div class="uj-srow">
+        <div class="uj-slab"></div>
+        <div class="uj-track uj-hook">
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+          <span class="uj-arr down" aria-hidden="true"><i></i></span>
+        </div>
+      </div>
+
+      <div class="uj-srow">
+        <div class="uj-slab"><span class="uj-tag admin">管理员</span>开通</div>
+        <div class="uj-track">
+          <div class="uj-node"><span class="no">8</span><span class="ttl">签发密钥</span><span class="st">归属用户 + 绑定工具集</span></div>
+          <span class="uj-arr rev" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">7</span><span class="ttl">开通用户</span><span class="st">企微选人 / 导入 · 入组</span></div>
+          <span class="uj-arr rev" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">6</span><span class="ttl">创建工具集</span><span class="st">勾选工具，才能被 Key 绑</span></div>
+          <span class="uj-arr rev" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">5</span><span class="ttl">创建工具</span><span class="st">探测 / 手工 / 发布数据集</span></div>
+        </div>
+      </div>
+
+      <div class="uj-srow">
+        <div class="uj-slab"></div>
+        <div class="uj-track uj-hook">
+          <span class="uj-arr down" aria-hidden="true"><i></i></span>
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
+
+      <div class="uj-srow">
+        <div class="uj-slab"><span class="uj-tag user">用户</span>调用</div>
+        <div class="uj-track">
+          <div class="uj-node"><span class="no">9</span><span class="ttl">粘贴配置</span><span class="st">url + Bearer，重启客户端</span></div>
+          <span class="uj-arr" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">10</span><span class="ttl">提问调用</span><span class="st">list 只见工具集内工具</span></div>
+          <span class="uj-arr" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">11</span><span class="ttl">受控结果</span><span class="st">按该用户套 Grant</span></div>
+          <span class="uj-arr" aria-hidden="true"><i></i></span>
+          <div class="uj-node"><span class="no">12</span><span class="ttl">调用监控</span><span class="st">日志回写 · 告警 · 关系树</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="callout">不要颠倒：没有已登记数据源就建不了服务；没有工具集，Key 绑不到任何工具；没有入组，行/列策略可能打不中。</div>
+  </section>
+
+  <footer>产品设计 · 用户旅程 · 对照时序图与数据流</footer>
+</div>
+</body>
+</html>

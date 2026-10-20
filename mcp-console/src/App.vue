@@ -25,38 +25,37 @@ import SiderFoldIcon from './components/SiderFoldIcon.vue'
 import McpMark from './components/McpMark.vue'
 
 const MENU = [
-  { key: 'org', title: '组织管理', short: '组织', icon: 'icon-user-group', items: [
-    { key: 'users', label: '用户管理', icon: 'icon-user' },
-    { key: 'groups', label: '用户组管理', icon: 'icon-user-group' },
-  ] },
-  { key: 'data', title: '数据管理', short: '数据', icon: 'icon-apps', items: [
+  { key: 'data', title: '数据准备', short: '数据', icon: 'icon-apps', items: [
     { key: 'sources', label: '数据源', icon: 'icon-link' },
     { key: 'datasets', label: '数据集', icon: 'icon-file' },
     { key: 'security', label: '数据权限', icon: 'icon-lock' },
   ] },
-  { key: 'mcp', title: 'MCP 管理', short: 'MCP', icon: 'icon-storage', items: [
+  { key: 'mcp', title: 'MCP 服务', short: 'MCP', icon: 'icon-storage', items: [
     { key: 'services', label: 'MCP 中心', icon: 'icon-cloud' },
     { key: 'tools', label: '工具目录', icon: 'icon-list' },
-    { key: 'clients', label: '接入与密钥', icon: 'icon-safe' },
-    { key: 'relations', label: '关系树', icon: 'icon-mind-mapping' },
   ] },
-  { key: 'ops', title: '监控管理', short: '监控', icon: 'icon-dashboard', items: [
-    { key: 'overview', label: '概览', icon: 'icon-dashboard' },
+  { key: 'org', title: '用户与接入', short: '用户', icon: 'icon-user-group', items: [
+    { key: 'users', label: '用户管理', icon: 'icon-user' },
+    { key: 'groups', label: '用户组管理', icon: 'icon-user-group' },
+    { key: 'clients', label: '接入与密钥', icon: 'icon-safe' },
+  ] },
+  { key: 'ops', title: '运行监控', short: '监控', icon: 'icon-dashboard', items: [
     { key: 'monitor', label: '调用监控', icon: 'icon-bar-chart' },
     { key: 'analytics', label: '数据分析', icon: 'icon-arrow-rise' },
     { key: 'alerts', label: '告警中心', icon: 'icon-notification', badge: true },
+    { key: 'relations', label: '关系树', icon: 'icon-mind-mapping' },
   ] },
 ]
 const DATA_IDS = new Set(['sources', 'datasets', 'security'])
-const MCP_IDS = new Set(['services', 'tools', 'clients', 'relations'])
-const OPS_IDS = new Set(['overview', 'monitor', 'analytics', 'alerts'])
-const ORG_IDS = new Set(['users', 'groups'])
-const CONSOLE_IDS = new Set(['overview', 'services', 'tools', 'monitor', 'analytics', 'users', 'groups', 'clients', 'alerts', 'relations'])
+const MCP_IDS = new Set(['services', 'tools'])
+const OPS_IDS = new Set(['monitor', 'analytics', 'alerts', 'relations'])
+const ORG_IDS = new Set(['users', 'groups', 'clients'])
+const CONSOLE_IDS = new Set(['services', 'tools', 'monitor', 'analytics', 'users', 'groups', 'clients', 'alerts', 'relations'])
 const TOP_VIEWS = new Set(['docs', 'sequence'])
 const CREATE_IDS = new Set(['dataset-create', 'dataset-sql', 'dataset-studio'])
 const LIST_IDS = new Set([...CONSOLE_IDS, ...DATA_IDS])
 const views = { overview: Overview, sources: Sources, datasets: Datasets, security: DataSecurity, 'dataset-create': DatasetCreate, 'dataset-sql': DatasetCreate, 'dataset-studio': DatasetStudio, services: Services, tools: Tools, relations: Relations, monitor: Monitor, analytics: Analytics, sequence: Sequence, docs: Docs, clients: Clients, users: Users, groups: UserGroups, alerts: Alerts }
-const cur = ref('overview')
+const cur = ref('sources')
 const collapsed = ref(false)
 const search = ref('')
 const openKeys = ref(['org', 'data', 'mcp', 'ops'])
@@ -71,7 +70,7 @@ function hashView() {
   return (location.hash || '').replace(/^#/, '').split('?')[0]
 }
 function showView(id) {
-  if (id === 'workbench' || id === 'data') {
+  if (id === 'workbench' || id === 'data' || id === 'overview' || !id) {
     showView('sources')
     return
   }
@@ -108,7 +107,7 @@ function ensureOrgMenuOpen() {
   if (!openKeys.value.includes('org')) openKeys.value = [...openKeys.value, 'org']
 }
 function openHome() {
-  showView('overview')
+  showView('sources')
 }
 function onMenu(key) {
   store.clientFlt.toolsetId = ''
@@ -118,7 +117,7 @@ function onMenu(key) {
 }
 function syncHash() {
   const h = hashView()
-  if (h === 'workbench' || h === 'data') {
+  if (!h || h === 'workbench' || h === 'data' || h === 'overview') {
     cur.value = 'sources'
     ensureDataMenuOpen()
     history.replaceState(null, '', '#sources')
@@ -175,7 +174,7 @@ async function copyCfg() {
 const searchPh = computed(() => {
   if (cur.value === 'users') return '搜索姓名 / 手机 / 登录邮箱'
   if (cur.value === 'groups') return '搜索用户组 / 成员 / 说明'
-  if (cur.value === 'clients') return '搜索接入端 / Key / 归属用户'
+  if (cur.value === 'clients') return '搜索 Key / 归属用户'
   if (cur.value === 'sources') return '搜索数据源 / 主机 / 环境变量'
   if (cur.value === 'datasets') return '搜索数据集 / 表名 / 数据源'
   if (cur.value === 'security') return '搜索规则名称 / 字段 / 数据集'
@@ -273,32 +272,53 @@ onBeforeUnmount(() => {
           :auto-open="true"
           @menu-item-click="onMenu"
         >
-          <a-sub-menu v-for="g in MENU" :key="g.key">
-            <template #icon><component :is="g.icon" /></template>
-            <template #title>{{ g.title }}</template>
-            <a-menu-item v-for="it in g.items" :key="it.key">
-              <template #icon><component :is="it.icon" /></template>
-              {{ it.label }}
-              <a-badge v-if="it.badge && openAlertCount()" :count="openAlertCount()" :max-count="99" class="menu-badge" />
+          <template v-for="g in MENU" :key="g.key">
+            <a-menu-item v-if="g.single" :key="g.key">
+              <template #icon><component :is="g.icon" /></template>
+              {{ g.label }}
             </a-menu-item>
-          </a-sub-menu>
+            <a-sub-menu v-else :key="g.key">
+              <template #icon><component :is="g.icon" /></template>
+              <template #title>{{ g.title }}</template>
+              <a-menu-item v-for="it in g.items" :key="it.key">
+                <template #icon><component :is="it.icon" /></template>
+                {{ it.label }}
+                <a-badge v-if="it.badge && openAlertCount()" :count="openAlertCount()" :max-count="99" class="menu-badge" />
+              </a-menu-item>
+            </a-sub-menu>
+          </template>
         </a-menu>
         <nav v-else class="sider-rail">
-          <div v-for="g in MENU" :key="g.key" class="rail-group">
-            <div class="rail-cap">{{ g.short }}</div>
-            <a-tooltip v-for="it in g.items" :key="it.key" :content="`${g.title} · ${it.label}`" position="right" mini>
-              <button
-                type="button"
-                class="rail-item"
-                :class="{ on: selectedMenu === it.key }"
-                :aria-label="it.label"
-                @click="onMenu(it.key)"
-              >
-                <component :is="it.icon" />
-                <span v-if="it.badge && openAlertCount()" class="rail-dot" />
-              </button>
-            </a-tooltip>
-          </div>
+          <template v-for="g in MENU" :key="g.key">
+            <div v-if="g.single" class="rail-group">
+              <a-tooltip :content="g.label" position="right" mini>
+                <button
+                  type="button"
+                  class="rail-item"
+                  :class="{ on: selectedMenu === g.key }"
+                  :aria-label="g.label"
+                  @click="onMenu(g.key)"
+                >
+                  <component :is="g.icon" />
+                </button>
+              </a-tooltip>
+            </div>
+            <div v-else class="rail-group">
+              <div class="rail-cap">{{ g.short }}</div>
+              <a-tooltip v-for="it in g.items" :key="it.key" :content="`${g.title} · ${it.label}`" position="right" mini>
+                <button
+                  type="button"
+                  class="rail-item"
+                  :class="{ on: selectedMenu === it.key }"
+                  :aria-label="it.label"
+                  @click="onMenu(it.key)"
+                >
+                  <component :is="it.icon" />
+                  <span v-if="it.badge && openAlertCount()" class="rail-dot" />
+                </button>
+              </a-tooltip>
+            </div>
+          </template>
         </nav>
         <div class="sider-fold-bar" :class="{ collapsed }">
           <button
@@ -315,7 +335,7 @@ onBeforeUnmount(() => {
 
       <a-layout-content class="content-wrap" :class="{ full: !siderOn, create: CREATE_IDS.has(cur) }">
         <div class="page-panel" :class="{ flush: shell === 'docs' || CREATE_IDS.has(cur) }">
-          <keep-alive exclude="DatasetCreate,DatasetStudio">
+          <keep-alive exclude="DatasetCreate,DatasetStudio,Overview">
             <component :is="views[cur]" :key="cur" :create-mode="cur === 'dataset-sql' ? 'sql' : 'canvas'" @goto="showView" />
           </keep-alive>
         </div>

@@ -220,19 +220,18 @@ onDeactivated(() => {
           <a-input-search
             v-model="store.clientFlt.kw"
             allow-clear
-            placeholder="搜索接入端 / Key / 归属用户"
+            placeholder="搜索 Key / 归属用户"
             :style="{ width: '260px' }"
           />
         </a-space>
         <a-space>
           <a-tag v-if="fltSet" color="arcoblue" closable @close="clearFlt">工具集：{{ fltSet.name }}</a-tag>
           <a-tag v-if="fltUser" color="green" closable @close="clearUserFlt">归属：{{ fltUser.name }}</a-tag>
-          <span class="muted">{{ rows.length }} 个接入端</span>
+          <span class="muted">{{ rows.length }} 把密钥</span>
         </a-space>
       </div>
-      <a-table :data="rows" :pagination="false" row-key="id" :scroll="{ x: 1520 }" hoverable stripe>
+      <a-table :data="rows" :pagination="false" row-key="id" :scroll="{ x: 1380 }" hoverable stripe>
         <template #columns>
-          <a-table-column title="接入端" data-index="name" :width="140" />
           <a-table-column title="归属用户" :width="120">
             <template #cell="{ record }">
               <span v-if="ownerOf(record.userId)">

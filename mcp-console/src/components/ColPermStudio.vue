@@ -12,6 +12,7 @@ const props = defineProps({
   datasetId: { type: String, default: '' },
   policyId: { type: String, default: '' },
   openAdd: { type: Boolean, default: false },
+  embedded: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -33,12 +34,22 @@ function emptyPolicy() {
     id: uid('cp'),
     column: '',
     columns: [],
+    fieldMasks: {},
     mask: 'hide',
     subject: 'only',
     users: [],
     groups: [],
     on: true,
   }
+}
+function maskOfField(p, col) {
+  return p?.fieldMasks?.[col] || p?.mask || 'hide'
+}
+function setFieldMask(p, col, mask) {
+  if (!p.fieldMasks) p.fieldMasks = {}
+  p.fieldMasks[col] = mask
+  const vals = (p.columns || []).map((c) => maskOfField(p, c))
+  if (vals.length && vals.every((m) => m === vals[0])) p.mask = vals[0]
 }
 
 const draft = reactive({
@@ -50,8 +61,6 @@ const draft = reactive({
 })
 const editing = ref(null)
 const whitelistOn = ref(false)
-const reuseOpen = ref(false)
-
 const ds = computed(() => findDataset(store, props.datasetId))
 const columns = computed(() => ds.value?.columns || [])
 const aclUsers = computed(() => store.users.filter((u) => u.status === '正常'))
@@ -61,7 +70,6 @@ const userGroups = computed(() => store.userGroups.map((g) => ({
   name: g.name,
   count: (g.memberIds || []).length,
 })))
-const reuseSources = computed(() => store.datasets.filter((d) => !d.deleted && d.id !== props.datasetId && hydrateColPolicies(findGrant(store, d.id)).length))
 const listed = computed(() => {
   const q = draft.kw.trim().toLowerCase()
   const list = draft.policies
@@ -120,7 +128,7 @@ function hydrate() {
 
 watch(() => [props.visible, props.datasetId, props.policyId, props.openAdd], ([on]) => {
   if (on) hydrate()
-})
+}, { immediate: true })
 
 function close() {
   emit('update:visible', false)
@@ -141,7 +149,10 @@ function startAdd() {
 }
 
 function startEdit(p) {
-  editing.value = { ...clone(p), columns: [...colPolicyColumns(p)] }
+  const columns = [...colPolicyColumns(p)]
+  const fieldMasks = { ...(p.fieldMasks || {}) }
+  columns.forEach((c) => { if (!fieldMasks[c]) fieldMasks[c] = p.mask || 'hide' })
+  editing.value = { ...clone(p), columns, fieldMasks }
 }
 
 function cancelEdit() {
@@ -156,14 +167,32 @@ function finishRule() {
     Message.warning('请至少选择一个字段')
     return
   }
-  p.column = p.columns[0]
   if ((p.subject === 'only' || p.subject === 'except') && !(p.users || []).length && !(p.groups || []).length) {
     Message.warning('请选择用户或用户组')
     return
   }
-  const i = draft.policies.findIndex((x) => x.id === p.id)
-  if (i >= 0) draft.policies.splice(i, 1, clone(p))
-  else draft.policies.push(clone(p))
+  const groups = new Map()
+  p.columns.forEach((col) => {
+    const mask = maskOfField(p, col)
+    if (!groups.has(mask)) groups.set(mask, [])
+    groups.get(mask).push(col)
+  })
+  const base = {
+    subject: p.subject,
+    users: [...(p.users || [])],
+    groups: [...(p.groups || [])],
+    on: p.on !== false,
+  }
+  const built = [...groups.entries()].map(([mask, cols], idx) => ({
+    ...base,
+    id: idx === 0 ? p.id : uid('cp'),
+    columns: cols,
+    column: cols[0],
+    mask,
+    fieldMasks: Object.fromEntries(cols.map((c) => [c, mask])),
+  }))
+  draft.policies = draft.policies.filter((x) => x.id !== p.id)
+  draft.policies.push(...built)
   editing.value = null
 }
 
@@ -196,41 +225,23 @@ function saveAll() {
   close()
 }
 
-function reuseFrom(id) {
-  if (!id) return
-  const g = findGrant(store, id)
-  const own = new Set(columns.value.map((c) => c.column_name))
-  const policies = hydrateColPolicies(g)
-    .map((p) => {
-      const cols = colPolicyColumns(p).filter((c) => own.has(c))
-      return { ...clone(p), id: uid('cp'), columns: cols, column: cols[0] || '' }
-    })
-    .filter((p) => p.columns.length)
-  if (!policies.length) {
-    Message.warning('该数据集的列规则在当前数据集中没有同名字段，无法复用')
-    return
-  }
-  draft.policies = policies
-  draft.other = g.col_other || 'allow'
-  draft.whitelist = [...(g.col_whitelist || [])]
-  draft.enabled = true
-  reuseOpen.value = false
-  Message.success('已复用规则')
-}
 </script>
 
 <template>
-  <a-drawer
-    :visible="visible"
-    :width="1080"
-    :footer="false"
-    unmount-on-close
-    popup-container="body"
-    class="perm-drawer"
+  <component
+    :is="embedded ? 'section' : 'a-drawer'"
+    v-bind="embedded ? { class: 'perm-embed' } : {
+      visible,
+      width: 1080,
+      footer: false,
+      unmountOnClose: true,
+      popupContainer: 'body',
+      class: 'perm-drawer',
+    }"
     @cancel="close"
     @update:visible="emit('update:visible', $event)"
   >
-    <template #title>
+    <template v-if="!embedded" #title>
       <div class="cs-title">
         <strong>列级权限</strong>
         <span v-if="ds" class="ds-chip">
@@ -239,28 +250,23 @@ function reuseFrom(id) {
         </span>
       </div>
     </template>
-    <div class="col-studio">
+    <div class="col-studio" :class="{ embed: embedded }">
+      <div v-if="embedded" class="embed-head">
+        <div class="cs-title">
+          <strong>列级权限</strong>
+          <span v-if="ds" class="ds-chip">
+            <DsMark />
+            {{ ds.display_name }}
+          </span>
+        </div>
+        <a-button @click="close">返回列表</a-button>
+      </div>
       <div class="cs-body">
         <div class="cs-toolbar">
           <label class="en">
             <a-switch :model-value="draft.enabled" size="small" @change="onEnable" />
             启用列级权限
           </label>
-          <span class="tb-right">
-            <button type="button" class="link" @click="Message.info('列级权限用于禁止查看或脱敏指定字段，并可按用户 / 用户组控制生效范围。白名单用户不受规则限制。')">
-              <icon-question-circle /> 查看帮助
-            </button>
-            <a-dropdown v-model:popup-visible="reuseOpen" @select="reuseFrom">
-              <a-button>
-                <template #icon><icon-copy /></template>
-                规则复用
-              </a-button>
-              <template #content>
-                <a-doption v-for="d in reuseSources" :key="d.id" :value="d.id">{{ d.display_name }}</a-doption>
-                <a-doption v-if="!reuseSources.length" disabled>暂无可复用规则</a-doption>
-              </template>
-            </a-dropdown>
-          </span>
         </div>
 
         <section v-if="!draft.enabled" class="intro">
@@ -268,9 +274,7 @@ function reuseFrom(id) {
           <p class="intro-lead">
             当前数据集暂未开启设置，在左上方
             <button type="button" class="link" @click="onEnable(true)">开启</button>
-            后手动添加<br>
-            或从其他数据集
-            <button type="button" class="link" @click="reuseOpen = true">复制权限规则</button>
+            后手动添加
           </p>
           <div class="about">
             <div class="about-line"><span>关于列级权限</span></div>
@@ -384,20 +388,26 @@ function reuseFrom(id) {
                     allow-clear
                     :max-tag-count="6"
                     placeholder="选择一个或多个字段"
+                    @change="(cols) => {
+                      const next = {}
+                      ;(cols || []).forEach((c) => { next[c] = maskOfField(editing, c) })
+                      editing.fieldMasks = next
+                    }"
                   />
                   <div class="muted" style="margin-top: 6px">已选 {{ editing.columns.length }} / {{ freeColumns.length }} 个可选字段。同一字段只能出现在一条规则里。</div>
                 </div>
                 <div class="field-block">
-                  <div class="lbl">设置规则</div>
-                  <a-radio-group v-model="editing.mask" direction="vertical">
-                    <a-radio value="hide">
-                      禁止查看
-                      <a-tooltip content="权限生效人员无法查看该字段">
-                        <icon-info-circle />
-                      </a-tooltip>
-                    </a-radio>
-                    <a-radio value="mask">数据脱敏</a-radio>
-                  </a-radio-group>
+                  <div class="lbl">按字段设置规则</div>
+                  <div v-if="!editing.columns.length" class="muted">请先选择字段，再为每个字段单独设置禁止查看或脱敏</div>
+                  <div v-else class="field-mask-list">
+                    <div v-for="col in editing.columns" :key="col" class="field-mask-row">
+                      <span class="mono ellipsis" :title="col">{{ col }}</span>
+                      <a-radio-group :model-value="maskOfField(editing, col)" size="small" @change="(v) => setFieldMask(editing, col, v)">
+                        <a-radio value="hide">禁止查看</a-radio>
+                        <a-radio value="mask">数据脱敏</a-radio>
+                      </a-radio-group>
+                    </div>
+                  </div>
                 </div>
               </aside>
               <div class="who-pane">
@@ -460,7 +470,7 @@ function reuseFrom(id) {
         <a-button v-else type="primary" @click="saveAll">保存</a-button>
       </footer>
     </div>
-  </a-drawer>
+  </component>
 </template>
 
 <style scoped>
@@ -472,20 +482,32 @@ function reuseFrom(id) {
   margin: -16px -20px -20px;
   color: rgb(12, 13, 14);
 }
+.col-studio.embed {
+  height: auto;
+  min-height: calc(100vh - 148px);
+  margin: 0;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.embed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e5e6eb;
+}
 .cs-title { display: flex; align-items: center; gap: 10px; font-size: 16px; }
 .ds-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 10px 2px 6px;
-  border-radius: 4px;
-  background: #f3e8ff;
+  padding: 2px 0;
   color: #722ed1;
   font-size: 13px;
 }
 .ds-chip :deep(.ds-mark) { margin-right: 0; }
-.tb-right { display: inline-flex; align-items: center; gap: 16px; }
-.tb-right .link { display: inline-flex; align-items: center; gap: 4px; }
 .link {
   border: none;
   background: none;
@@ -551,6 +573,25 @@ function reuseFrom(id) {
 .aside-title { font-weight: 600; margin-bottom: 12px; }
 .field-block { margin-bottom: 16px; }
 .lbl { color: #4e5969; font-size: 13px; margin-bottom: 8px; }
+.field-mask-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.field-mask-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  background: #fafbfc;
+}
+.field-mask-row .mono { font-size: 12px; color: #1d2129; }
 .lbl-row { display: flex; align-items: center; justify-content: space-between; }
 .lbl-ops { display: inline-flex; gap: 10px; }
 .lbl-ops .link:disabled { color: #c9cdd4; cursor: not-allowed; }

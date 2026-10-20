@@ -1,10 +1,10 @@
 <script setup>
-import { computed, onDeactivated, reactive, ref } from 'vue'
+import { computed, onDeactivated, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import G2LineChart from '../components/G2LineChart.vue'
 import {
   store, SCHEMA_TPL, SECTOR_TAG, openPlayground, tagColor, keyForEndpoint, findSource,
-  requestToolReads, readRequestsOf, isReadControlled, uncontrolledReason,
+  requestToolReads, readRequestsOf, isReadControlled, uncontrolledReason, getOrCreateGrant,
 } from '../store'
 import { fmt, srColor } from '../utils'
 
@@ -17,8 +17,221 @@ const dataFlt = ref('all')
 const current = ref(null)
 const upstreamServices = computed(() => store.services.filter((s) => !s.builtin))
 const form = reactive({
+  mode: 'manual',
   name: '', cn: '', svc: upstreamServices.value[0]?.id, sector: '', version: 'v1.0.0', on: true, desc: '', schema: SCHEMA_TPL, reads: [],
+  datasetId: '',
+  fields: [],
+  requiredFields: [],
 })
+
+const selectedRegisterDataset = computed(() => store.datasets.find((d) => d.id === form.datasetId) || null)
+const datasetFields = computed(() => {
+  const ds = selectedRegisterDataset.value
+  if (!ds) return []
+  const grant = getOrCreateGrant(store, ds)
+  const hidden = new Set((grant.columns || []).filter((c) => c.allowed === false).map((c) => c.column_name))
+  return (ds.columns || [])
+    .filter((c) => !hidden.has(c.column_name))
+    .map((c) => ({
+      name: c.column_name,
+      type: c.data_type || 'varchar',
+      desc: c.description || c.semantic_hint || '',
+    }))
+})
+
+function jsonTypeFromColumn(dataType) {
+  const t = String(dataType || '').toLowerCase()
+  if (/\b(int|bigint|smallint|tinyint|integer)\b/.test(t)) return { type: 'integer' }
+  if (/(decimal|numeric|float|double|number|real|money)/.test(t)) return { type: 'number' }
+  if (/bool/.test(t)) return { type: 'boolean' }
+  if (/(datetime|timestamp)/.test(t)) return { type: 'string', format: 'date-time' }
+  if (/\bdate\b/.test(t)) return { type: 'string', format: 'date' }
+  return { type: 'string' }
+}
+
+function buildDatasetSchema(fields, required) {
+  const cols = datasetFields.value
+  const properties = {}
+  fields.forEach((name) => {
+    const col = cols.find((c) => c.name === name)
+    properties[name] = {
+      ...jsonTypeFromColumn(col?.type),
+      description: col?.desc || `${name}${col?.type ? `（${col.type}）` : ''}`,
+    }
+  })
+  return JSON.stringify({
+    type: 'object',
+    properties,
+    required: (required || []).filter((r) => fields.includes(r)),
+  }, null, 2)
+}
+
+function syncDatasetSchema() {
+  if (form.mode !== 'dataset') return
+  const nextReq = form.requiredFields.filter((n) => form.fields.includes(n))
+  if (nextReq.length !== form.requiredFields.length) form.requiredFields = nextReq
+  form.schema = buildDatasetSchema(form.fields, form.requiredFields)
+  form.reads = form.datasetId ? [form.datasetId] : []
+}
+
+watch(
+  () => [form.mode, form.datasetId, form.fields.slice(), form.requiredFields.slice()],
+  syncDatasetSchema,
+)
+
+function onRegisterMode(mode) {
+  if (mode === 'manual') {
+    form.datasetId = ''
+    form.fields = []
+    form.requiredFields = []
+    form.reads = []
+    form.schema = SCHEMA_TPL
+    return
+  }
+  form.reads = []
+  form.schema = buildDatasetSchema(form.fields, form.requiredFields)
+}
+
+function onRegisterDataset() {
+  form.fields = []
+  form.requiredFields = []
+  const ds = selectedRegisterDataset.value
+  if (!ds) return
+  if (!form.name.trim()) {
+    const slug = String(ds.table_name || ds.display_name || 'dataset').toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_')
+    form.name = `query_${slug}`
+  }
+  if (!form.cn.trim()) {
+    form.cn = `${findSource(ds.data_source_id)?.name || '来源表'} · ${ds.display_name}`
+  }
+}
+
+function asChecked(v, name) {
+  return v === true || v === name || v === 'true'
+}
+
+function toggleRegField(name, checked) {
+  const on = asChecked(checked, name)
+  const i = form.fields.indexOf(name)
+  if (on && i < 0) form.fields.push(name)
+  if (!on && i >= 0) {
+    form.fields.splice(i, 1)
+    const r = form.requiredFields.indexOf(name)
+    if (r >= 0) form.requiredFields.splice(r, 1)
+  }
+}
+
+function toggleRegRequired(name, checked) {
+  const on = asChecked(checked, name)
+  const i = form.requiredFields.indexOf(name)
+  if (on && i < 0) form.requiredFields.push(name)
+  if (!on && i >= 0) form.requiredFields.splice(i, 1)
+}
+
+function selectAllRegFields() {
+  form.fields = datasetFields.value.map((c) => c.name)
+}
+
+const JSON_SCHEMA_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object', 'null'])
+const calibrateResult = ref(null)
+
+function calibrateRegister() {
+  const items = []
+  const add = (level, text) => items.push({ level, text })
+  const name = form.name.trim()
+  const cn = form.cn.trim()
+  const svc = store.services.find((s) => s.id === form.svc)
+
+  if (!name) add('fail', '缺少工具名称（MCP Tool.name）')
+  else if (!/^[a-z][a-z0-9_]*$/.test(name)) add('fail', '工具名称须为 snake_case，才能作为 MCP tools/list 的 name')
+  else if (name.length > 64) add('fail', '工具名称过长（建议 ≤ 64）')
+  else add('pass', `工具名称 ${name} 符合 MCP 命名`)
+
+  if (name && store.tools.some((t) => t.name === name)) add('fail', `工具名 ${name} 已在目录中，不能重复登记`)
+
+  if (!cn) add('fail', '缺少中文名称')
+  else add('pass', '已填写中文名称')
+
+  if (!form.desc.trim()) add('warn', '缺少 description。MCP 客户端靠描述让模型选择工具')
+  else add('pass', '已填写工具描述')
+
+  if (!svc || svc.builtin) add('fail', '须挂到上游 MCP 服务，不能登记到平台托管服务')
+  else add('pass', `所属服务 ${svc.name}（${svc.proto || 'MCP'}）`)
+
+  let schema
+  try {
+    schema = JSON.parse(form.schema)
+  } catch {
+    add('fail', 'inputSchema 不是合法 JSON，无法作为 MCP Tool.inputSchema')
+    calibrateResult.value = { ok: false, items }
+    return calibrateResult.value
+  }
+
+  if (schema.type !== 'object') add('fail', 'MCP 协议要求 Tool.inputSchema.type 必须是 object')
+  else add('pass', 'inputSchema.type = object')
+
+  const props = schema.properties
+  const keys = props && typeof props === 'object' && !Array.isArray(props) ? Object.keys(props) : null
+  if (!keys) add('fail', 'inputSchema.properties 必须是对象')
+  else if (!keys.length) add('fail', 'properties 不能为空：MCP 工具至少声明一个入参')
+  else {
+    add('pass', `已声明 ${keys.length} 个入参，符合 JSON Schema`)
+    keys.forEach((k) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) add('fail', `参数名 ${k} 不是合法标识符`)
+      const p = props[k]
+      if (!p || typeof p !== 'object' || Array.isArray(p)) add('fail', `参数 ${k} 缺少 schema 对象`)
+      else if (!JSON_SCHEMA_TYPES.has(p.type)) add('fail', `参数 ${k} 的 type 不在 JSON Schema 允许集合（string / number / integer / boolean / array / object）`)
+      else if (!p.description) add('warn', `参数 ${k} 缺少 description，模型难以正确填参`)
+    })
+    const req = schema.required
+    if (req == null) add('warn', '未声明 required。建议标出模型必须传入的过滤条件')
+    else if (!Array.isArray(req)) add('fail', 'required 必须是字符串数组')
+    else {
+      const bad = req.filter((r) => !keys.includes(r))
+      if (bad.length) add('fail', `required 包含未声明参数：${bad.join('、')}`)
+      else add('pass', req.length ? `必填项合法：${req.join('、')}` : 'required 为空（全部可选）')
+    }
+    if (keys.length > 12) add('warn', '入参超过 12 个，模型填参容易出错，建议只勾过滤条件字段')
+  }
+
+  if (form.mode === 'dataset') {
+    if (!form.datasetId) add('fail', '数据集注册须选择一个数据集')
+    if (!form.fields.length) add('fail', '须勾选至少一个数据集字段作为入参')
+    const known = new Set(datasetFields.value.map((c) => c.name))
+    const orphan = form.fields.filter((f) => !known.has(f))
+    if (orphan.length) add('fail', `勾选字段不在当前数据集可见列：${orphan.join('、')}`)
+    else if (form.fields.length) add('pass', '勾选字段均来自所选数据集可见列，未凭空捏造')
+    if (keys) {
+      form.fields.forEach((f) => {
+        const col = datasetFields.value.find((c) => c.name === f)
+        const got = props[f]
+        if (!got || !col) return
+        const expect = jsonTypeFromColumn(col.type)
+        if (got.type !== expect.type) add('fail', `字段 ${f} 类型映射不合法：列是 ${col.type}，参数却是 ${got.type}，按 MCP JSON Schema 应为 ${expect.type}`)
+        else if (expect.format && got.format !== expect.format) add('warn', `字段 ${f} 建议带 format=${expect.format}`)
+      })
+    }
+  }
+
+  const ok = !items.some((i) => i.level === 'fail')
+  calibrateResult.value = { ok, items }
+  return calibrateResult.value
+}
+
+watch(
+  () => [form.mode, form.name, form.cn, form.desc, form.svc, form.schema, form.datasetId, form.fields.slice(), form.requiredFields.slice()],
+  () => {
+    if (!toolVisible.value || form.mode !== 'dataset') {
+      if (form.mode !== 'dataset') calibrateResult.value = null
+      return
+    }
+    if (!form.datasetId) {
+      calibrateResult.value = null
+      return
+    }
+    calibrateRegister()
+  },
+)
 
 const datasetOptions = computed(() => store.datasets
   .filter((d) => !d.deleted)
@@ -173,6 +386,7 @@ function series30(seed) {
 }
 
 function openRegister() {
+  form.mode = 'manual'
   form.name = ''
   form.cn = ''
   form.svc = upstreamServices.value[0]?.id
@@ -182,6 +396,10 @@ function openRegister() {
   form.desc = ''
   form.schema = SCHEMA_TPL
   form.reads = []
+  form.datasetId = ''
+  form.fields = []
+  form.requiredFields = []
+  calibrateResult.value = null
   toolVisible.value = true
 }
 
@@ -191,6 +409,16 @@ function submitTool() {
   if (store.tools.some((t) => t.name === name)) { Message.warning(`工具 ${name} 已存在`); return false }
   if (!cn) { Message.warning('请填写中文名称'); return false }
   if (!form.svc) { Message.warning('请选择所属服务'); return false }
+  if (form.mode === 'dataset') {
+    if (!form.datasetId) { Message.warning('请选择一个数据集'); return false }
+    if (!form.fields.length) { Message.warning('请至少勾选一个字段作为入参'); return false }
+    syncDatasetSchema()
+    const calib = calibrateRegister()
+    if (!calib.ok) {
+      Message.warning('校准未通过：生成的参数不符合 MCP 服务协议，请按提示修正')
+      return false
+    }
+  }
   let schema
   try { schema = JSON.parse(form.schema) } catch { Message.warning('inputSchema 不是合法 JSON，请检查'); return false }
   store.tools.push({
@@ -221,7 +449,7 @@ onDeactivated(() => {
     <div class="page-head">
       <div>
         <h2>工具目录</h2>
-        <div class="desc">全部已登记 MCP 工具。上游服务工具由「MCP 中心」探测或在此注册，读取数据集需向数据集负责人申请；数据集工具在「数据集 → 发布工具」生成，行列权限统一在「数据权限」配置。</div>
+        <div class="desc">全部已登记 MCP 工具。上游服务可探测，也可在此手工注册或按数据集勾选字段自动生成入参；读取数据集需向数据集负责人申请。数据集页「发布工具」仍走平台托管服务，行列权限统一在「数据权限」配置。</div>
       </div>
       <a-button type="primary" @click="openRegister">
         <template #icon><icon-plus /></template>注册工具
@@ -405,12 +633,29 @@ onDeactivated(() => {
       </template>
     </a-drawer>
 
-    <a-modal v-model:visible="toolVisible" title="注册上游服务工具" :width="760" :on-before-ok="submitTool" :ok-text="'注册'" unmount-on-close>
+    <a-drawer
+      v-model:visible="toolVisible"
+      title="注册上游服务工具"
+      :width="680"
+      placement="right"
+      unmount-on-close
+      :ok-text="'注册'"
+      :on-before-ok="submitTool"
+    >
       <a-alert style="margin-bottom: 16px">
-        这里登记上游 MCP 服务已实现的工具。要把数据表 / 视图开放成工具，请到
+        手工注册粘贴 Schema；数据集注册选一张表、勾选字段后自动生成入参并申请读取。要把表发布成平台托管工具，请到
         <a-link @click="gotoDatasets">数据集 → 发布工具</a-link>。
       </a-alert>
       <a-form :model="form" layout="vertical">
+        <a-form-item label="注册方式" class="reg-mode-item">
+          <div class="reg-mode">
+            <a-radio-group v-model="form.mode" type="button" @change="onRegisterMode">
+              <a-radio value="manual">手工注册</a-radio>
+              <a-radio value="dataset">数据集注册</a-radio>
+            </a-radio-group>
+            <div class="reg-mode-hint muted">{{ form.mode === 'dataset' ? '勾选字段会按 JSON Schema 类型生成 MCP Tool.inputSchema，不是随意造参。须通过协议校准后才能注册。' : '沿用现有方式：手写 JSON Schema，可选申请读取多张数据集。' }}</div>
+          </div>
+        </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12"><a-form-item label="工具名称（snake_case）" required><a-input v-model="form.name" placeholder="get_warehouse_receipt" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item label="中文名称" required><a-input v-model="form.cn" placeholder="如：仓单日报查询" /></a-form-item></a-col>
@@ -432,12 +677,71 @@ onDeactivated(() => {
           <a-col :span="12"><a-form-item label="初始状态"><a-switch v-model="form.on" /><span style="margin-left:8px;font-size:12px;color:var(--color-text-3)">启用后立即对接入端可见</span></a-form-item></a-col>
         </a-row>
         <a-form-item label="工具描述"><a-input v-model="form.desc" placeholder="一句话说明工具能力与数据口径" /></a-form-item>
-        <a-form-item label="申请读取的数据集（可选）" extra="提交后由数据集负责人审批；批准后数据源自动关联到所属服务，调用时经中间视图按用户组过滤。">
+        <a-form-item v-if="form.mode === 'manual'" label="申请读取的数据集（可选）" extra="提交后由数据集负责人审批；批准后数据源自动关联到所属服务，调用时经中间视图按用户组过滤。">
           <a-select v-model="form.reads" :options="datasetOptions" multiple allow-search allow-clear placeholder="选择数据集" />
         </a-form-item>
-        <a-form-item label="输入参数 Schema（inputSchema，JSON）"><a-textarea v-model="form.schema" :auto-size="{ minRows: 8, maxRows: 12 }" /></a-form-item>
+        <a-form-item v-if="form.mode === 'dataset'" label="选择数据集" required extra="选一张表后勾选字段；提交时自动申请读取该数据集。">
+          <a-select v-model="form.datasetId" :options="datasetOptions" allow-search allow-clear placeholder="选择一个数据集" @change="onRegisterDataset" />
+        </a-form-item>
+        <a-form-item v-if="form.mode === 'dataset' && form.datasetId" label="入参字段" required class="reg-fields-item">
+          <div class="reg-fields">
+            <div class="reg-fields-bar">
+              <a-button type="text" size="mini" @click="selectAllRegFields">全选</a-button>
+              <a-button type="text" size="mini" @click="form.fields = []; form.requiredFields = []">清空</a-button>
+              <span class="muted">{{ form.fields.length }} / {{ datasetFields.length }} 已选</span>
+            </div>
+            <div v-if="!datasetFields.length" class="muted">该数据集暂无可用字段</div>
+            <div v-else class="reg-field-group">
+              <div v-for="c in datasetFields" :key="c.name" class="reg-field">
+                <a-checkbox
+                  :model-value="form.fields.includes(c.name)"
+                  @change="(v) => toggleRegField(c.name, v)"
+                >
+                  <span class="reg-field-name mono">{{ c.name }}</span>
+                </a-checkbox>
+                <span class="reg-field-type">{{ c.type }}</span>
+                <span class="reg-field-desc">{{ c.desc || '—' }}</span>
+                <a-checkbox
+                  :disabled="!form.fields.includes(c.name)"
+                  :model-value="form.requiredFields.includes(c.name)"
+                  @change="(v) => toggleRegRequired(c.name, v)"
+                >必填</a-checkbox>
+              </div>
+            </div>
+          </div>
+          <div class="reg-fields-hint muted">勾选字段即生成参数；可选标必填。</div>
+        </a-form-item>
+        <a-form-item :label="form.mode === 'dataset' ? '生成的参数 Schema（inputSchema）' : '输入参数 Schema（inputSchema，JSON）'">
+          <a-textarea
+            v-model="form.schema"
+            :auto-size="{ minRows: 8, maxRows: 12 }"
+            class="mono"
+            :readonly="form.mode === 'dataset'"
+          />
+        </a-form-item>
+        <div v-if="form.mode === 'dataset'" class="calib">
+          <div class="calib-head">
+            <div>
+              <div class="calib-title">MCP 协议校准</div>
+              <div class="muted">对照 Tool.name / description / inputSchema（JSON Schema object）。登记只写目录，服务端须已按同一协议实现该工具。</div>
+            </div>
+            <a-space>
+              <a-tag v-if="calibrateResult" :color="calibrateResult.ok ? 'green' : 'red'">
+                {{ calibrateResult.ok ? '合法' : '不合法' }}
+              </a-tag>
+              <a-button size="mini" type="outline" @click="calibrateRegister">校准</a-button>
+            </a-space>
+          </div>
+          <div v-if="calibrateResult?.items?.length" class="calib-list">
+            <div v-for="(item, i) in calibrateResult.items" :key="i" :class="['calib-item', item.level]">
+              <span class="calib-mark">{{ item.level === 'pass' ? '✓' : item.level === 'warn' ? '!' : '×' }}</span>
+              <span>{{ item.text }}</span>
+            </div>
+          </div>
+          <div v-else class="muted">选择数据集并勾选字段后自动校准，也可点「校准」复查。</div>
+        </div>
       </a-form>
-    </a-modal>
+    </a-drawer>
   </div>
 </template>
 
@@ -450,4 +754,77 @@ onDeactivated(() => {
 .read-row { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; }
 .read-name { justify-self: start; }
 .read-note { grid-column: 2; font-size: 12px; }
+.reg-fields-item { margin-bottom: 20px; }
+.reg-fields-item :deep(.arco-form-item-content),
+.reg-fields-item :deep(.arco-form-item-content-flex) {
+  display: block;
+  width: 100%;
+}
+.reg-fields {
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px;
+  padding: 12px 12px 6px;
+  background: var(--color-fill-1);
+  max-height: 320px;
+  overflow: auto;
+}
+.reg-fields-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border-2);
+}
+.reg-fields-hint { display: block; margin-top: 10px; line-height: 1.65; }
+.reg-field-group { display: flex; flex-direction: column; width: 100%; }
+.reg-field {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.3fr) 100px minmax(80px, 1.6fr) 72px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-top: 1px solid var(--color-border-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.reg-field:first-child { border-top: none; }
+.reg-mode-item { margin-bottom: 20px; }
+.reg-mode-item :deep(.arco-form-item-content),
+.reg-mode-item :deep(.arco-form-item-content-flex) {
+  display: block;
+  width: 100%;
+}
+.reg-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+.reg-mode-hint { display: block; line-height: 1.65; }
+.reg-field-name { font-weight: 600; }
+.reg-field-type { color: var(--color-text-3); font-family: ui-monospace, Menlo, Consolas, monospace; }
+.reg-field-desc { color: var(--color-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calib {
+  margin-top: 4px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--color-fill-1);
+}
+.calib-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.calib-title { font-weight: 600; font-size: 13px; }
+.calib-list { display: flex; flex-direction: column; gap: 2px; }
+.calib-item { display: flex; gap: 8px; font-size: 12px; line-height: 1.65; }
+.calib-mark { width: 12px; flex: none; font-weight: 700; }
+.calib-item.pass { color: rgb(var(--green-6)); }
+.calib-item.warn { color: rgb(var(--orange-6)); }
+.calib-item.fail { color: rgb(var(--red-6)); }
 </style>

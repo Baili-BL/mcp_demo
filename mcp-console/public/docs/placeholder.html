@@ -66,7 +66,7 @@
   <section id="quick">
     <h2>快速上手</h2>
     <ol class="steps">
-      <li>进入「数据管理 › 数据集」，点击 <b>SQL 数据集</b>，选择数据源。</li>
+      <li>进入「数据准备 › 数据集」，点击 <b>SQL 数据集</b>，选择数据源。</li>
       <li>在编辑器里写 SELECT，并在需要动态的地方写占位符，例如 <code>WHERE region IN ('$val{region_ph}')</code>。</li>
       <li>点击工具栏的 <b>占位符管理</b>，右侧抽屉会列出系统自动识别到的占位符。按钮上的数字是占位符个数，变红表示有配置错误。</li>
       <li>为每个占位符选择<b>变量类型</b>，填写<b>查询默认值</b>并选择生效范围（仅数据集 / 全局生效），点击「确定」。</li>
@@ -169,7 +169,7 @@
 
   <section id="tag">
     <h2>标签占位符</h2>
-    <p><span class="kind k-tag">标签</span>在运行时读取<b>当前访问用户</b>的标签，适合「每个人只看自己团队的数据」。可用标签取自「组织管理」中的用户信息：</p>
+    <p><span class="kind k-tag">标签</span>在运行时读取<b>当前访问用户</b>的标签，适合「每个人只看自己团队的数据」。可用标签取自「用户与接入」中的用户信息：</p>
     <table>
       <thead><tr><th style="width:120px">标签</th><th>取值来源</th><th style="width:220px">示例（陈可）</th></tr></thead>
       <tbody>

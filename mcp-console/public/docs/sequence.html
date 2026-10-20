@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>时序图：开发介入</title>
+<title>时序图：全用户操作流程</title>
 <link rel="stylesheet" href="/docs/article.css">
 </head>
 <body>
@@ -11,59 +11,102 @@
   <p class="kicker">Sequence · 全流程</p>
   <h1>时序图文档</h1>
   <p class="lede">
-    交互时序图在顶部「时序图」。本文补上原先缺失的两段：<strong>开发工程师提前介入</strong>，以及<strong>服务注册 / 工具注册</strong>。
-    用户开通发生在发 Key 之前。
+    交互时序图在顶部「时序图」。本页按<strong>管理员在控制台点下去的顺序</strong>写完整用户流程：
+    数据源 / 数据集 → 用户权限 → 创建服务 → 创建工具 → 创建工具集 → 开通用户 → 接入调用。
   </p>
 
   <section>
-    <h2>角色</h2>
+    <h2>不要颠倒的顺序</h2>
+    <ol class="steps">
+      <li><b>数据源</b>：数据准备 → 数据源。服务创建时只能勾已登记的源。</li>
+      <li><b>数据集</b>：在源上建表 / 同库模型 / SQL 数据集。这是「创建工具」的数据侧入口。</li>
+      <li><b>用户权限</b>：数据权限里配行策略、列策略、协作者。必须在发布工具和发 Key 之前。</li>
+      <li><b>创建服务</b>：MCP 中心 → 创建 MCP 服务（端点、协议、勾数据源、可选透传身份）。</li>
+      <li><b>创建工具</b>：探测 <code>tools/list</code>、工具目录手工登记，或「数据集 → 发布工具」；既有工具可申请读取数据集。</li>
+      <li><b>创建工具集</b>：把各服务里的工具归集。没有工具集，用户 Key 绑不到任何工具。</li>
+      <li><b>开通用户</b>：企微选人或导入注册，加入用户组（组决定 Grant 是否命中）。</li>
+      <li><b>签发密钥</b>：接入与密钥，Key 归属用户并绑定工具集，把 url + Bearer 发给对方。</li>
+      <li><b>接入调用</b>：用户粘贴配置 → list 只见工具集内工具 → call 按该用户套 Grant。</li>
+    </ol>
+    <div class="callout">两套权限分开：<b>工具集</b>决定能调哪些工具；<b>Grant</b> 决定调数据集时看见哪些行和列。</div>
+  </section>
+
+  <section>
+    <h2>1 · 数据源 / 数据集</h2>
+    <p>管理员在「数据源」填写 DSN、只读账号、超时，测试连接并同步 schema。再到「数据集」建集：单表、同库 JOIN，或 SQL + 占位符。禁止跨源 JOIN。</p>
+    <p>定制协议（行情快照等）仍须开发先写 FastMCP；只要把已有表按人过滤，走数据集即可，不必新起进程。</p>
+  </section>
+
+  <section>
+    <h2>2 · 用户数据权限</h2>
+    <ol class="steps">
+      <li>行权限：对全员 / 指定用户 / 用户组生效，可白名单绕过，未匹配可兜底为空。</li>
+      <li>列权限：隐藏或脱敏；仅对 TA 有效 / 仅对 TA 无效。</li>
+      <li>协作者：谁能改这个数据集和它的权限（<code>use</code> / <code>manage</code>）。</li>
+    </ol>
+    <div class="callout">权限主体是用户和用户组，不是 Key。Key 只用来找出调用人，再套 Grant。</div>
+  </section>
+
+  <section>
+    <h2>3 · 创建服务</h2>
+    <ol class="steps">
+      <li>MCP 中心 → 创建 MCP 服务：名称、code、端点、HTTP 或 SSE。</li>
+      <li>勾选本服务读取的<strong>已登记数据源</strong>。没有的源先回第 1 步。</li>
+      <li>若该服务要读受控数据集，打开「透传身份」。</li>
+      <li>数据集服务 <code>dataset-hub-mcp</code> 由平台托管，发布数据集工具时自动挂上，一般不用再手建。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>4 · 创建工具</h2>
     <table>
-      <thead><tr><th>角色</th><th>职责</th></tr></thead>
+      <thead><tr><th>来源</th><th>在哪做</th><th>结果</th></tr></thead>
       <tbody>
-        <tr><td>用户 · 研究员</td><td>申请账号、提问、消费结论</td></tr>
-        <tr><td>MCP 客户端</td><td>Cursor / Claude Desktop，持 Key 调工具</td></tr>
-        <tr><td>开发工程师</td><td>摸清上游、实现 MCP、登记服务与工具</td></tr>
-        <tr><td>管理台</td><td>用户、服务、工具集、密钥、监控</td></tr>
-        <tr><td>MCP 服务端</td><td>FastMCP 进程</td></tr>
-        <tr><td>数据面</td><td>可能跨 MySQL / 数仓 / CRM，不是单一 metric 库</td></tr>
+        <tr><td>探测上游</td><td>创建服务时勾选，或稍后探测 <code>tools/list</code></td><td>工具挂到该服务，出现在工具目录</td></tr>
+        <tr><td>手工登记</td><td>工具目录粘贴 Schema</td><td>探测失败时的补录</td></tr>
+        <tr><td>发布数据集</td><td>数据集 → 发布工具</td><td>挂 <code>dataset-hub-mcp</code>，Schema 随 Grant 走</td></tr>
+        <tr><td>申请读取</td><td>工具目录勾选数据集 → 数据集侧批准</td><td>写入 <code>reads</code>；生成中间视图后才算受控</td></tr>
       </tbody>
     </table>
+    <div class="callout">工具进目录还不能给最终用户。必须进入下一步：创建工具集并勾选。</div>
   </section>
 
   <section>
-    <h2>阶段〇 · 开发介入（原先缺失）</h2>
+    <h2>5 · 创建工具集</h2>
     <ol class="steps">
-      <li>用户/产品向开发提出数据能力（「要螺纹钢现货 + CRM 客户」）。</li>
-      <li>开发向数据面确认：表、口径、是否跨库、只读账号。</li>
-      <li>开发实现 FastMCP 工具（薄包装，不在 MCP 层重算口径）。</li>
-      <li>联系 MCP 服务人员在管理台<strong>登记服务</strong>（端点、协议、上游平台）。</li>
-      <li>开发<strong>注册工具</strong>：探测 <code>tools/list</code> 或提交 Schema，编入工具集。</li>
-      <li>管理台对端点做一次 <code>tools/list</code> 核对，不一致则服务保持「待发布」。</li>
+      <li>MCP 中心 → MCP 工具集 → 创建。</li>
+      <li>从各服务勾选工具加入（可跨服务，不覆盖集内原有工具）。</li>
+      <li>也可在探测完成后「创建并绑定工具集」，再去签发密钥。</li>
     </ol>
-    <div class="callout">没有阶段〇就签发 Key，客户端会拿到空工具列表或打到未授权库。这是时序图必须把开发放在管理员前面的原因。</div>
+    <p>一把 Key 只绑需要的集，避免行情 Key 打穿 CRM / 数仓。</p>
   </section>
 
   <section>
-    <h2>阶段一 · 用户开通与密钥</h2>
+    <h2>6 · 开通用户</h2>
     <ol class="steps">
-      <li>内部员工：管理员调用企业微信通讯录 API，按部门勾选同事开通（userid / 手机 / 企业邮箱由企微返回）。</li>
-      <li>外部客户：管理员生成邀请链接，对方 7 天内填写姓名与手机号完成注册（登录邮箱选填）。</li>
-      <li>账号变为正常后，再签发 Key 并绑定工具集。完整 Key 只展示一次。</li>
+      <li>内部：企业微信通讯录选人。外部或不在通讯录：导入注册（手机号 + 名称，可 Excel）。</li>
+      <li>加入用户组。行/列策略按组命中，未入组等于策略对其无效或走兜底。</li>
+      <li>接入与密钥：先选归属用户，再绑工具集，设 QPS / 日配额 / 到期。完整 Key 只展示一次。</li>
+      <li>把 url + Bearer Key 发给该用户。</li>
     </ol>
   </section>
 
   <section>
-    <h2>阶段二～四</h2>
-    <p>与控制台时序图一致：粘贴配置 → <code>initialize</code>（握手可不带 Key）→ <code>tools/list</code> / <code>tools/call</code> 强制鉴权 → 按工具路由到对应库 → 日志回写监控。</p>
-    <p>跨平台调用时，一次用户问题可能连续打两个 MCP 服务（行情 + 分析），密钥必须分别绑定对应工具集，不能靠「内网所以都能打」。</p>
+    <h2>7 · 接入调用</h2>
+    <p>用户写入客户端配置并重启 → <code>initialize</code>（可无 Key）→ <code>tools/list</code> 只返回该 Key 工具集 → 提问后 <code>tools/call</code>。指标工具按 source 打库；数据集工具用 Key 归属用户编译 Grant，再打该集所在源。</p>
+  </section>
+
+  <section>
+    <h2>8 · 监控</h2>
+    <p>调用日志回写监控。关系树从用户 / 服务 / 数据集三边看：工具集是否绑上、Grant 是否生效、读取是否受控。</p>
   </section>
 
   <section>
     <h2>和交互图怎么用</h2>
-    <p>打开顶部 <b>时序图</b>，筛「⓪ 开发介入」可只看注册链路；蓝色步骤仍跳到 MCP 中心 / 用户管理 / 接入与密钥。开发侧决策分叉见《工程开发流程图》。</p>
+    <p>打开顶部 <b>时序图</b>，点上方条带「3 创建服务」「4 创建工具」「5 创建工具集」只看那一段。蓝色箭头跳到 MCP 中心 / 工具目录 / 数据源 / 数据集 / 数据权限 / 用户 / 接入与密钥。</p>
   </section>
 
-  <footer>接入流程 · 时序图文档 · 与控制台时序图阶段划分一致</footer>
+  <footer>接入流程 · 时序图文档 · 与控制台操作顺序一致</footer>
 </div>
 </body>
 </html>

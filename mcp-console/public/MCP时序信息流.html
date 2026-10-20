@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MCP 服务时序信息流 — 期货研究品种数据</title>
+<title>MCP 服务时序信息流 — 从创建服务到用户调用</title>
 <style>
 :root{
   --blue:#1677ff;--ink:#1f2329;--t2:#4e5969;--t3:#86909c;--line:#e5e6eb;--bg:#f4f6f9;
@@ -15,7 +15,6 @@
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
 .mono{font-family:"SF Mono",Menlo,Consolas,monospace}
 .wrap{min-width:1280px;max-width:1480px;margin:0 auto;padding:22px 24px 48px}
-
 .top{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:16px}
 .top h1{font-size:22px;font-weight:600}
 .top .sub{color:var(--t3);font-size:13px;margin-top:6px;line-height:1.6}
@@ -24,7 +23,6 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
 .legend i.r{border-top-style:dashed;border-color:var(--green)}
 .legend i.e{border-top-color:var(--red)}
 .legend i.n{width:10px;height:10px;border:1px dashed var(--t3);border-radius:2px;background:#fff;vertical-align:-1px}
-
 .seq{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .lanes{display:grid;grid-template-columns:repeat(6,1fr);border-bottom:1px solid var(--line);background:#fafbfc;position:sticky;top:0;z-index:4}
 .lane{padding:12px 8px 14px;text-align:center;position:relative}
@@ -32,18 +30,17 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
 .lane .ic{width:38px;height:38px;border-radius:10px;margin:0 auto 7px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff}
 .lane .nm{font-weight:600;font-size:13.5px}
 .lane .ds{font-size:11.5px;color:var(--t3);margin-top:3px;line-height:1.45}
-
 .body{position:relative}
 .lifelines{position:absolute;inset:0;pointer-events:none;z-index:0}
 .lifelines i{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed #d9e0ea}
-
 .rows{position:relative;z-index:1}
 .phase{padding:8px 18px;font-size:12.5px;font-weight:600;letter-spacing:.4px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.phase.p1{background:#e6f4ff;color:#0958d9}
-.phase.p2{background:#f6ffed;color:#237804}
-.phase.p3{background:#fff7e6;color:#ad4e00}
-.phase.p4{background:#f9f0ff;color:#531dab}
-
+.phase.psvc,.phase.pmon{background:#f2f3f5;color:#4e5969}
+.phase.psrc{background:#e6fffb;color:#08979c}
+.phase.ptool,.phase.pcall{background:#e6f4ff;color:#0958d9}
+.phase.puser{background:#f6ffed;color:#237804}
+.phase.pperm{background:#fff7e6;color:#ad4e00}
+.phase.pts{background:#f9f0ff;color:#531dab}
 .msg{position:relative;height:54px}
 .msg:hover{background:#f7faff}
 .arr{position:absolute;top:34px;height:0}
@@ -59,11 +56,9 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;backgr
 .arr.r .lb .no{background:var(--green)}
 .arr.err .lb .no{background:var(--red)}
 .arr .lb .code{color:var(--t3);font-size:11.5px}
-
 .note-row{position:relative;height:42px}
 .note{position:absolute;top:8px;transform:translateX(-50%);background:#fffbe6;border:1px dashed #d4b106;border-radius:6px;padding:5px 10px;font-size:11.5px;color:#876800;white-space:nowrap;z-index:2}
 .note b{color:var(--ink)}
-
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
 .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px}
 .card h3{font-size:14px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
@@ -83,11 +78,10 @@ html.embed .foot{display:none}
 </head>
 <body>
 <div class="wrap">
-
   <div class="top">
     <div>
-      <h1>MCP 服务时序信息流 <span style="font-size:13px;color:var(--t3);font-weight:400">期货研究品种数据 · futures-metric-mcp</span></h1>
-      <div class="sub">六个角色、四阶段：服务注册与密钥签发 → 客户端接入 → 数据调用（真实 SQL）→ 监控闭环。箭头落点对齐各泳道中线，与当前实现一一对应。</div>
+      <h1>MCP 服务时序信息流 <span style="font-size:13px;color:var(--t3);font-weight:400">从创建服务到用户调用</span></h1>
+      <div class="sub">数据源 / 数据集 → 用户权限 → 创建服务 → 创建工具 → 创建工具集 → 开通用户 → 接入调用。</div>
     </div>
     <div class="legend">
       <span><i></i>请求 / 同步调用</span>
@@ -99,163 +93,112 @@ html.embed .foot{display:none}
 
   <div class="seq">
     <div class="lanes">
-      <div class="lane"><div class="ic" style="background:var(--lane-user)">👤</div><div class="nm">用户 · 研究员</div><div class="ds">自然语言提问<br>接收分析结论</div></div>
-      <div class="lane"><div class="ic" style="background:var(--lane-client)">💻</div><div class="nm">MCP 客户端</div><div class="ds">Cursor / Claude Desktop<br>LLM 自主选择工具</div></div>
-      <div class="lane"><div class="ic" style="background:var(--lane-dev)">🛠</div><div class="nm">开发 / 管理员</div><div class="ds">注册服务<br>签发密钥 · 看监控</div></div>
-      <div class="lane"><div class="ic" style="background:var(--lane-console)">📊</div><div class="nm">管理台 Console</div><div class="ds">注册中心 · 密钥<br>调用监控 · 告警</div></div>
-      <div class="lane"><div class="ic" style="background:var(--lane-srv)">⚙️</div><div class="nm">MCP 服务端</div><div class="ds">FastMCP · :8600/mcp<br>鉴权中间件 · 工具路由</div></div>
-      <div class="lane"><div class="ic" style="background:var(--lane-db)">🗄</div><div class="nm">MySQL · metric 库</div><div class="ds">4 源指标数据 + EDB<br>api_key / invoke_log</div></div>
+      <div class="lane"><div class="ic" style="background:var(--lane-user)">👤</div><div class="nm">用户 · 研究员</div><div class="ds">被开通 / 提问<br>接收分析结论</div></div>
+      <div class="lane"><div class="ic" style="background:var(--lane-client)">💻</div><div class="nm">MCP 客户端</div><div class="ds">Cursor / Claude Desktop<br>持 Key 调工具集</div></div>
+      <div class="lane"><div class="ic" style="background:var(--lane-dev)">🛠</div><div class="nm">开发 / 管理员</div><div class="ds">操作控制台<br>全流程</div></div>
+      <div class="lane"><div class="ic" style="background:var(--lane-console)">📊</div><div class="nm">管理台 Console</div><div class="ds">源 · 集 · 权限<br>服务 · 工具集 · 密钥</div></div>
+      <div class="lane"><div class="ic" style="background:var(--lane-srv)">⚙️</div><div class="nm">MCP 服务端</div><div class="ds">探测 · 路由<br>套 Grant</div></div>
+      <div class="lane"><div class="ic" style="background:var(--lane-db)">🗄</div><div class="nm">数据面</div><div class="ds">库表 · Grant<br>中间视图</div></div>
     </div>
-
     <div class="body">
       <div class="lifelines">
         <i style="left:8.333%"></i><i style="left:25%"></i><i style="left:41.667%"></i>
         <i style="left:58.333%"></i><i style="left:75%"></i><i style="left:91.667%"></i>
       </div>
-
       <div class="rows">
 
-        <div class="phase p1">阶段一 · 服务注册与密钥签发（管理台操作，一次性）</div>
+        <div class="phase psrc">1 · 数据源 / 数据集</div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">1</span>创建数据源 <span class="code">数据准备 → 数据源</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:58.333%;width:33.334%"><div class="lb"><span class="no">2</span>测试连接并同步 schema <span class="code">表 / 字段</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:58.333%;width:33.334%"><div class="lb"><span class="no">3</span>返回目录 <span class="code">禁止跨源 JOIN</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">4</span>创建数据集 <span class="code">表 / 模型 / SQL</span></div><div class="ln"></div><div class="hd"></div></div></div>
 
-        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%">
-          <div class="lb"><span class="no">1</span>注册新服务 <span class="code">名称 · 端点 · 上游数据源</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
+        <div class="phase pperm">2 · 用户数据权限</div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">5</span>配置行权限 <span class="code">用户 / 用户组 / 白名单</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">6</span>配置列权限 <span class="code">隐藏 / 脱敏</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:58.333%;width:33.334%"><div class="lb"><span class="no">7</span>保存 DatasetGrant <span class="code">row_policies + col_policies</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">8</span>设置数据集协作者 <span class="code">use / manage</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="note-row"><div class="note" style="left:58.333%">权限主体是 <b>用户与用户组</b>，不是 Key</div></div>
 
-        <div class="msg"><div class="arr r" style="left:41.667%;width:16.666%">
-          <div class="lb"><span class="no">2</span>下发客户端配置 <span class="code">mcpServers JSON</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
+        <div class="phase psvc">3 · 创建 MCP 服务</div>
+        <div class="msg"><div class="arr f" style="left:8.333%;width:33.334%"><div class="lb"><span class="no">9</span>提出要接入的能力 <span class="code">行情 / 表 / CRM</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:33.334%"><div class="lb"><span class="no">10</span>实现 FastMCP（如需） <span class="code">dsx 平台托管</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">11</span>创建 MCP 服务 <span class="code">名称 · 端点 · HTTP/SSE</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">12</span>勾选已登记数据源 <span class="code">源须先在数据源页登记</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">13</span>打开「透传身份」 <span class="code">受控读取前提</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">14</span>服务已登记 <span class="code">待探测工具</span></div><div class="ln"></div><div class="hd"></div></div></div>
 
-        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%">
-          <div class="lb"><span class="no">3</span>新建接入密钥 <span class="code">名称 · QPS · 日配额 · 到期时间</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
+        <div class="phase ptool">4 · 创建工具</div>
+        <div class="msg"><div class="arr f" style="left:58.333%;width:16.667%"><div class="lb"><span class="no">15</span>探测 tools/list <span class="code">挂到本服务</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:58.333%;width:16.667%"><div class="lb"><span class="no">16</span>返回工具清单 <span class="code">进入工具目录</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">17</span>手工登记工具 <span class="code">探测失败时补 Schema</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:58.333%;width:16.667%"><div class="lb"><span class="no">18</span>发布数据集工具 <span class="code">挂 dataset-hub-mcp</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">19</span>既有工具申请读取 <span class="code">工具目录 → 待授权</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:58.333%;width:33.334%"><div class="lb"><span class="no">20</span>批准读取 + 中间视图 <span class="code">sec_view · 须透传身份</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="note-row"><div class="note" style="left:58.333%">工具进了目录 <b>还不能给用户</b>：必须再创建工具集</div></div>
 
-        <div class="msg"><div class="arr f wide" style="left:58.333%;width:33.334%">
-          <div class="lb"><span class="no">4</span>写入密钥 <span class="code mono">INSERT INTO base_from_mcp_api_key</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
+        <div class="phase pts">5 · 创建工具集</div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">21</span>创建 MCP 工具集 <span class="code">MCP 中心 → 工具集</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">22</span>勾选工具加入工具集 <span class="code">可跨服务归集</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">23</span>工具集可下发 <span class="code">去接入与密钥签发</span></div><div class="ln"></div><div class="hd"></div></div></div>
 
-        <div class="msg"><div class="arr r" style="left:41.667%;width:16.666%">
-          <div class="lb"><span class="no">5</span>完整 Key 仅展示一次 <span class="code">含到期时间；过期后拒绝鉴权</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
+        <div class="phase puser">6 · 开通用户与签发密钥</div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">24</span>企业微信通讯录选人 <span class="code">添加企业用户</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">25</span>导入注册 <span class="code">手机号 + 名称</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:8.333%;width:50%"><div class="lb"><span class="no">26</span>账号入组 <span class="code">组决定 Grant 是否命中</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">27</span>签发密钥 <span class="code">归属用户 + 绑定工具集</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:58.333%;width:33.334%"><div class="lb"><span class="no">28</span>写入密钥 <span class="code">QPS · 配额 · 到期</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">29</span>完整 Key 仅展示一次 <span class="code">过期拒绝鉴权</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:8.333%;width:33.334%"><div class="lb"><span class="no">30</span>把接入配置发给用户 <span class="code">url + Bearer Key</span></div><div class="ln"></div><div class="hd"></div></div></div>
 
-        <div class="msg"><div class="arr r wide" style="left:8.333%;width:33.334%">
-          <div class="lb"><span class="no">6</span>分发接入配置给用户 <span class="code">url + Bearer Key（IM / 邮件 / 工单）</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
+        <div class="phase pcall">7 · 用户接入与受控调用</div>
+        <div class="msg"><div class="arr f" style="left:8.333%;width:16.667%"><div class="lb"><span class="no">31</span>粘贴配置并重启 <span class="code mono">~/.cursor/mcp.json</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:25%;width:50%"><div class="lb"><span class="no">32</span>initialize <span class="code">握手无需鉴权</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:25%;width:50%"><div class="lb"><span class="no">33</span>tools/list <span class="code">Bearer Key</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:75%;width:16.667%"><div class="lb"><span class="no">34</span>校验 Key 并取归属用户 <span class="code">仅工具集内可见</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r err" style="left:25%;width:50%"><div class="lb"><span class="no">✕</span>无 Key / 未绑工具集 → 拒绝 <span class="code">AUTH_FAIL</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:8.333%;width:16.667%"><div class="lb"><span class="no">35</span>自然语言提问 <span class="code">「螺纹钢价格 + 客户盈亏」</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:25%;width:50%"><div class="lb"><span class="no">36</span>tools/call <span class="code">指标工具或数据集工具</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr f" style="left:75%;width:16.667%"><div class="lb"><span class="no">37</span>按调用人套 Grant 后路由 <span class="code">行过滤 + 列掩码</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:25%;width:50%"><div class="lb"><span class="no">38</span>返回已过滤结果 <span class="code">未授权行列不出现</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:8.333%;width:16.667%"><div class="lb"><span class="no">39</span>LLM 生成结论 <span class="code">引用工具</span></div><div class="ln"></div><div class="hd"></div></div></div>
 
-        <div class="phase p2">阶段二 · 客户端接入（initialize / tools/list）</div>
-
-        <div class="msg"><div class="arr f" style="left:8.333%;width:16.667%">
-          <div class="lb"><span class="no">7</span>粘贴配置并重启 <span class="code mono">~/.cursor/mcp.json</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr f" style="left:25%;width:50%">
-          <div class="lb"><span class="no">8</span>initialize <span class="code">协议协商（Streamable HTTP，握手无需鉴权）</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr r" style="left:25%;width:50%">
-          <div class="lb"><span class="no">9</span>serverInfo <span class="code mono">futures-metric-mcp · 工具使用说明</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr f" style="left:25%;width:50%">
-          <div class="lb"><span class="no">10</span>tools/list <span class="code mono">Authorization: Bearer &lt;api_key&gt;</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr f" style="left:75%;width:16.667%">
-          <div class="lb"><span class="no">11</span>校验 Key <span class="code mono">base_from_mcp_api_key</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr r" style="left:25%;width:50%">
-          <div class="lb"><span class="no">12</span>返回 8 个工具 Schema <span class="code">list_metric_sources / search_source_indexes / get_source_series …</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="note-row"><div class="note" style="left:83%">鉴权结果 <b>内存缓存 60s</b>，避免每次 tools/call 打库</div></div>
-
-        <div class="msg"><div class="arr r err" style="left:25%;width:50%">
-          <div class="lb"><span class="no">✕</span>无 Key / 错 Key → 拒绝 <span class="code">记录 phase=AUTH_FAIL（IP + 时间）</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="phase p3">阶段三 · 数据调用（示例：「螺纹钢最近价格？」→ 真实 SQL）</div>
-
-        <div class="msg"><div class="arr f" style="left:8.333%;width:16.667%">
-          <div class="lb"><span class="no">13</span>自然语言提问 <span class="code">「螺纹钢最近价格怎么样？」</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr f" style="left:25%;width:50%">
-          <div class="lb"><span class="no">14</span>tools/call <span class="code mono">search_source_indexes{source:1, keyword:"螺纹钢"}</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr f" style="left:75%;width:16.667%">
-          <div class="lb"><span class="no">15</span>路由 source=1 <span class="code mono">base_from_ths_index</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr r" style="left:75%;width:16.667%">
-          <div class="lb"><span class="no">16</span>17 条指标 <span class="code mono">S012107757 期货收盘价(活跃):螺纹钢</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr f" style="left:25%;width:50%">
-          <div class="lb"><span class="no">17</span>tools/call <span class="code mono">get_source_series{index_code:"S012107757"}</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr f" style="left:75%;width:16.667%">
-          <div class="lb"><span class="no">18</span>取序列 <span class="code mono">base_from_ths_data</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr r" style="left:75%;width:16.667%">
-          <div class="lb"><span class="no">19</span>时间序列点 <span class="code">2026-09-16 · 3126.0 元/吨</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="note-row"><div class="note" style="left:83%">异步写调用日志 <b>logs/invoke_log.jsonl</b>（可写库时双写 invoke_log 表）</div></div>
-
-        <div class="msg"><div class="arr r" style="left:25%;width:50%">
-          <div class="lb"><span class="no">20</span>返回结构化结果 <span class="code">meta + points（升序，最大 5000 点保护）</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr r" style="left:8.333%;width:16.667%">
-          <div class="lb"><span class="no">21</span>LLM 生成结论 <span class="code">「螺纹钢最新 3126 元/吨（09-16）…」</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="phase p4">阶段四 · 监控闭环（调用可观测 + 数据质量巡检）</div>
-
-        <div class="msg"><div class="arr r wide" style="left:58.333%;width:33.334%">
-          <div class="lb"><span class="no">22</span>读取调用日志 <span class="code mono">base_from_mcp_invoke_log → 调用量 / 延迟 / 错误</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
-
-        <div class="msg"><div class="arr r" style="left:41.667%;width:16.666%">
-          <div class="lb"><span class="no">23</span>监控视图 + 告警 <span class="code">错误率 Top · 密钥配额 · 逾期指标</span></div>
-          <div class="ln"></div><div class="hd"></div></div></div>
+        <div class="phase pmon">8 · 监控闭环</div>
+        <div class="msg"><div class="arr r" style="left:58.333%;width:33.334%"><div class="lb"><span class="no">40</span>读取调用日志 <span class="code">调用人 / 工具 / 耗时</span></div><div class="ln"></div><div class="hd"></div></div></div>
+        <div class="msg"><div class="arr r" style="left:41.667%;width:16.666%"><div class="lb"><span class="no">41</span>监控与告警 <span class="code">错误率 · 未受控读取</span></div><div class="ln"></div><div class="hd"></div></div></div>
 
       </div>
     </div>
   </div>
 
   <div class="cards">
-    <div class="card"><h3>鉴权与安全</h3>
+    <div class="card"><h3>创建顺序（不要颠倒）</h3>
       <ul>
-        <li>Bearer Key 校验 <span class="mono">base_from_mcp_api_key</span>（enabled + expire_time），结果缓存 60s</li>
-        <li>握手（initialize）放行；tools/list 与 tools/call 强制鉴权。失败分流：缺 Key / 已停用 / <b>已过期</b>（<span class="mono">AUTH_FAIL</span>）</li>
-        <li>用量限制（日配额 / QPS）与到期时间彼此独立：超限返回 429，过期直接拒绝鉴权</li>
-        <li>客户端统一写 <span class="mono">type: http</span>（SSE 则为 <span class="mono">sse</span>）+ Bearer API Key。stdio 的 command/args/env 本服务不用</li>
-        <li>密钥仅创建时完整展示；泄露后管理台一键吊销，临期可续期 90 天</li>
+        <li>先登记<strong>数据源</strong>，再建<strong>数据集</strong>，再配<strong>行/列权限</strong></li>
+        <li>再<strong>创建服务</strong>（勾已有数据源）→ <strong>创建工具</strong>（探测 / 手工 / 发布数据集）</li>
+        <li>再<strong>创建工具集</strong>并勾选工具；没有工具集的服务对用户不可见</li>
+        <li>最后<strong>开通用户</strong>、签发绑定工具集的 Key</li>
       </ul>
     </div>
-    <div class="card"><h3>数据源路由（source 参数）</h3>
+    <div class="card"><h3>两套权限</h3>
       <ul>
-        <li><span class="mono">1</span> 同花顺 → <span class="mono">base_from_ths_*</span>（3660 指标 / 440 万点）</li>
-        <li><span class="mono">9</span> SMM → <span class="mono">base_from_smm_*</span>（1835 / 118 万）</li>
-        <li><span class="mono">11</span> 上海钢联(化工) → <span class="mono">base_from_mysteel_chemical_*</span>（2541 / 290 万）</li>
-        <li><span class="mono">34</span> 手工录入；EDB 双路径：派生读 <span class="mono">edb_series_data</span>，基础指标自动回源</li>
+        <li><b>工具集权限</b>：Key 绑哪些工具，决定 tools/list 能看见什么</li>
+        <li><b>数据权限</b>：Grant 按用户/组滤行、掩列</li>
+        <li>创建工具：探测上游，或「数据集 → 发布工具」挂 <span class="mono">dsx</span></li>
+        <li>既有工具读数据集：申请读取 + 中间视图 + 透传身份</li>
       </ul>
     </div>
-    <div class="card"><h3>可观测与运维</h3>
+    <div class="card"><h3>用户侧流程</h3>
       <ul>
-        <li>调用日志字段与线上一致：key_name / tool_name / args / 耗时 / 行数 / 成功标识</li>
-        <li>管理台「调用监控」：24h 趋势、P50/P95/P99、错误码分布、实时调用流</li>
-        <li><span class="mono">get_source_freshness</span> 巡检逾期指标（end_date 超阈值，默认 10 天）</li>
-        <li>服务健康探活 <span class="mono">GET {endpoint}/health · 10s</span>，连续失败自动切备</li>
+        <li>内部企微选人；外部导入注册。入组后行/列策略才可能命中</li>
+        <li>拿到 url + Bearer Key，写入客户端并重启</li>
+        <li>提问后只调工具集内工具，结果已套该用户 Grant</li>
+        <li>关系树从用户 / 服务 / 数据集三边核对是否受控</li>
       </ul>
     </div>
   </div>
 
-  <div class="foot">配套页面：<a href="./MCP服务管理台_期货品种数据_Demo.html">MCP 服务管理台 Demo</a>　｜　服务端：<span class="mono">futures-mcp-server/server.py · db.py</span>　｜　本地端点 <span class="mono">http://127.0.0.1:8600/mcp</span></div>
+  <div class="foot">配套页面：控制台顶部「时序图」　｜　文档《时序图文档》《服务与工具注册》</div>
 </div>
 <script>
 if (new URLSearchParams(location.search).has('embed')) {

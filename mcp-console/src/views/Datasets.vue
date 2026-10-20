@@ -26,7 +26,7 @@ const ME = 'u-admin'
 
 const mineOnly = ref(false)
 const sortKey = ref('updated')
-const expandedKeys = ref(['fld-market'])
+const expandedKeys = ref(store.datasetFolders.map((f) => f.id))
 const folderOpen = ref(false)
 const folderMode = ref('create')
 const folderForm = reactive({ name: '', parent_id: ROOT_FOLDER_ID, id: '' })

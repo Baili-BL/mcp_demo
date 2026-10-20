@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>产品架构</title>
+<link rel="stylesheet" href="/docs/article.css">
+</head>
+<body>
+<div class="wrap wide">
+  <p class="kicker">Product Design · 架构</p>
+  <h1>产品架构</h1>
+  <p class="lede">
+    mcp-demo 是 <strong>MCP 服务管理台</strong>加一组期货研究数据 MCP 服务。
+    纵向四层、横向四域：交叉格才是职责落点，不是模块清单。
+  </p>
+
+  <section>
+    <h2>层叠</h2>
+    <div class="arch-stack">
+      <div class="arch-band l1">
+        <div class="lab">使用方</div>
+        <div class="arch-chips">
+          <div class="arch-chip"><b>研究员 / 客户</b><span>提问、收结论</span></div>
+          <div class="arch-chip"><b>Cursor / Claude / Agent</b><span>MCP 客户端</span></div>
+          <div class="arch-chip"><b>开发</b><span>写 FastMCP / 契约</span></div>
+          <div class="arch-chip"><b>管理员</b><span>配置、开通、运维</span></div>
+        </div>
+      </div>
+      <div class="arch-band l2">
+        <div class="lab">管理台</div>
+        <div class="arch-chips">
+          <div class="arch-chip"><b>数据准备</b><span>源 · 集 · Grant</span></div>
+          <div class="arch-chip"><b>MCP 服务</b><span>中心 · 目录 · 工具集</span></div>
+          <div class="arch-chip"><b>用户与接入</b><span>用户 · 组 · Key</span></div>
+          <div class="arch-chip"><b>运行监控</b><span>监控 · 告警 · 关系树</span></div>
+        </div>
+      </div>
+      <div class="arch-band l3">
+        <div class="lab">MCP 服务</div>
+        <div class="arch-chips">
+          <div class="arch-chip"><b>行情 mkt</b><span>现货 / 盘面 / 基差</span></div>
+          <div class="arch-chip"><b>基本面 fund</b><span>利润 / 开工 / 进出口</span></div>
+          <div class="arch-chip"><b>研报 res</b><span>检索 / 框架 / 抽取</span></div>
+          <div class="arch-chip"><b>分析 anl</b><span>CRM / 数仓分析</span></div>
+          <div class="arch-chip"><b>数据集 dsx</b><span>平台托管发布</span></div>
+        </div>
+      </div>
+      <div class="arch-band l4">
+        <div class="lab">数据面</div>
+        <div class="arch-chips">
+          <div class="arch-chip"><b>METRIC</b><span>指标库 DSN</span></div>
+          <div class="arch-chip"><b>CRM</b><span>客户与商机</span></div>
+          <div class="arch-chip"><b>DW</b><span>数仓查询</span></div>
+          <div class="arch-chip"><b>Oracle</b><span>仓单 / 风控</span></div>
+          <div class="arch-chip"><b>HTTP</b><span>海关等开放接口</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>架构矩阵</h2>
+    <p>行是层级，列是能力域。格内写「这一层在这一域做什么」。</p>
+    <div class="arch-matrix">
+      <div class="arch-corner"></div>
+      <div class="arch-mh">数据准备</div>
+      <div class="arch-mh">服务与工具</div>
+      <div class="arch-mh">用户与接入</div>
+      <div class="arch-mh">受控取数</div>
+
+      <div class="arch-ml l1">使用方</div>
+      <div class="arch-cell">
+        <b>管理员建源、建集</b>
+        <span>没有已登记源，服务勾不到上游</span>
+      </div>
+      <div class="arch-cell">
+        <b>开发写工具或发数据集</b>
+        <span>定制协议走 FastMCP；表过滤走 dsx</span>
+      </div>
+      <div class="arch-cell">
+        <b>研究员 / 客户用客户端</b>
+        <span>粘贴 url + Bearer，重启后提问</span>
+      </div>
+      <div class="arch-cell">
+        <b>每人看见自己的行和列</b>
+        <span>Agent 只调工具集内工具</span>
+      </div>
+
+      <div class="arch-ml l2">管理台</div>
+      <div class="arch-cell">
+        <b>数据源 · 数据集 · 数据权限</b>
+        <span>写 Grant 定义，不写死无调用人 SQL</span>
+      </div>
+      <div class="arch-cell">
+        <b>MCP 中心 · 工具目录 · 工具集</b>
+        <span>探测 / 手工 / 发布；集才能被 Key 绑</span>
+      </div>
+      <div class="arch-cell">
+        <b>用户 · 用户组 · 接入与密钥</b>
+        <span>企微或导入；Key 归属用户并绑集</span>
+      </div>
+      <div class="arch-cell">
+        <b>关系树 · 监控 · 告警</b>
+        <span>从用户 / 服务 / 数据集三边核对</span>
+      </div>
+
+      <div class="arch-ml l3">MCP 服务</div>
+      <div class="arch-cell">
+        <b>勾已登记源 · 透传身份</b>
+        <span>受控读取的前提；dsx 平台托管</span>
+      </div>
+      <div class="arch-cell">
+        <b>mkt / fund / res / anl / dsx</b>
+        <span>tools/list、tools/call，一工具一 DSN</span>
+      </div>
+      <div class="arch-cell">
+        <b>校验 Key，取出 user_id</b>
+        <span>未绑工具集 → AUTH_FAIL；list 只回集内</span>
+      </div>
+      <div class="arch-cell">
+        <b>按调用人编译 Grant</b>
+        <span>指标工具打 METRIC；数据集套行/列</span>
+      </div>
+
+      <div class="arch-ml l4">数据面</div>
+      <div class="arch-cell">
+        <b>schema · 占位符 SQL</b>
+        <span>禁止跨源 JOIN</span>
+      </div>
+      <div class="arch-cell">
+        <b>METRIC / CRM / DW / Oracle / HTTP</b>
+        <span>只读；跨平台由 Agent 连续调用</span>
+      </div>
+      <div class="arch-cell">
+        <b>会话身份</b>
+        <span>SET_IDENTITY / 会话变量带用户与组</span>
+      </div>
+      <div class="arch-cell">
+        <b>中间视图 · 行 WHERE · 列掩码</b>
+        <span>白名单绕过；未匹配看 row_other / col_other</span>
+      </div>
+    </div>
+    <div class="callout">交叉格里「服务与工具 × 数据面」只能是<strong>一工具一 DSN</strong>。一个服务可以声明多个上游，但不能在一个 tool 里隐式跨库 JOIN。</div>
+  </section>
+
+  <footer>产品设计 · 产品架构 · 对照首页用户流程、时序图与数据流</footer>
+</div>
+</body>
+</html>

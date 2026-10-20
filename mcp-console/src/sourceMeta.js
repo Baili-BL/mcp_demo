@@ -515,14 +515,14 @@ export function createModeledDataset(store, { name, sourceId, tables, fields, fo
     updated_at: now,
     columns: selectedFields.map((f, i) => ({
       id: f.id || `col-model-${Date.now()}-${i}`,
-      column_name: f.fieldName || f.column_name,
+      column_name: f.physicalName || f.column_name || f.fieldName,
       data_type: f.dataType || f.data_type || 'varchar',
       ordinal_position: i + 1,
       is_nullable: true,
       sample_values: null,
       distinct_count: null,
       null_count: null,
-      semantic_hint: f.semanticHint || null,
+      semantic_hint: f.fieldName || f.semanticHint || null,
       description: f.description || '',
     })),
   }
@@ -663,14 +663,14 @@ export function updateModeledDataset(store, id, { name, sourceId, tables, fields
   }
   dataset.columns = selectedFields.map((f, i) => ({
     id: f.id || `col-model-${dataset.id}-${i}`,
-    column_name: f.fieldName || f.column_name,
+    column_name: f.physicalName || f.column_name || f.fieldName,
     data_type: f.dataType || f.data_type || 'varchar',
     ordinal_position: i + 1,
     is_nullable: true,
     sample_values: null,
     distinct_count: null,
     null_count: null,
-    semantic_hint: f.semanticHint || null,
+    semantic_hint: f.fieldName || f.semanticHint || null,
     description: f.description || '',
   }))
   dataset.updated_at = stampNow()

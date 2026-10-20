@@ -13,6 +13,9 @@ const GROUPS = [
     id: 'product',
     title: '产品设计',
     items: [
+      { id: 'architecture', title: '产品架构', src: '/docs/architecture.html' },
+      { id: 'data-flow', title: '数据流', src: '/docs/data-flow.html' },
+      { id: 'journey', title: '用户旅程', src: '/docs/journey.html' },
       { id: 'users', title: '用户管理与注册', src: '/docs/users.html' },
       { id: 'register', title: '服务与工具注册', src: '/docs/register.html' },
       { id: 'placeholder', title: 'SQL 占位符使用说明', src: '/docs/placeholder.html' },

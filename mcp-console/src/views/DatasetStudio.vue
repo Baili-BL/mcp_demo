@@ -91,6 +91,7 @@ const phDlgOpen = ref(false)
 const placeholders = ref([])
 const phForm = reactive({ name: '', type: 'text', defaultValue: '' })
 const hideHidden = ref(true)
+const activeModelTableId = ref('')
 const preview = ref(null)
 const loading = ref(false)
 const searchRef = ref(null)
@@ -112,6 +113,11 @@ const studioFilters = ref([])
 const activeFilterId = ref('')
 
 const dataset = computed(() => store.datasets.find((d) => d.id === store.studioDatasetId) || null)
+const modelTables = computed(() => {
+  const ids = dataset.value?.extra?.tableIds || []
+  const list = ids.map((id) => store.datasets.find((d) => d.id === id)).filter(Boolean)
+  return list.length ? list : (dataset.value ? [dataset.value] : [])
+})
 const sourceName = computed(() => findSource(dataset.value?.data_source_id)?.name || '来源表')
 const tableCount = computed(() => 1 + (dataset.value?.extra?.joins?.length || 0))
 const boundToolCount = computed(() => dataset.value ? toolsOfDataset(store, dataset.value.id).length : 0)
@@ -144,13 +150,32 @@ function colorOf(i) {
   return COLORS[Math.min(i, COLORS.length - 1)]
 }
 
+function fieldDatasetId(ds, col) {
+  const extra = (ds?.extra?.fields || []).find((f) => f.id === col.id)
+  if (extra?.datasetId) return extra.datasetId
+  const id = String(col.id || '')
+  const idx = id.indexOf('::')
+  return idx > 0 ? id.slice(0, idx) : ''
+}
+
+function extraFieldOf(ds, col) {
+  const fields = ds?.extra?.fields || []
+  return fields.find((f) => f.id === col.id)
+    || fields.find((f) => f.physicalName === col.column_name)
+    || fields.find((f) => f.fieldName === col.column_name)
+    || null
+}
+
 function buildDrafts(ds) {
   drafts.value = (ds?.columns || []).map((c) => {
     const kind = kindOf(c)
+    const extra = extraFieldOf(ds, c)
+    const physical = extra?.physicalName || c.column_name
     return {
       id: c.id || c.column_name,
-      column_name: c.column_name,
-      display_name: c.semantic_hint || c.column_name,
+      datasetId: fieldDatasetId(ds, c),
+      column_name: physical,
+      display_name: c.semantic_hint || extra?.fieldName || c.column_name,
       data_type: c.data_type,
       description: c.description || '',
       kind,
@@ -181,8 +206,16 @@ function buildDrafts(ds) {
   })
 }
 
+function belongsToActiveTable(f) {
+  if (f.grouped || f.missFill) return true
+  const tid = activeModelTableId.value
+  const ids = dataset.value?.extra?.tableIds || []
+  if (!tid || ids.length < 2) return true
+  return f.datasetId === tid || String(f.id).startsWith(`${tid}::`)
+}
 const visibleFields = computed(() => {
-  const list = hideHidden.value ? drafts.value.filter((f) => f.selected) : drafts.value
+  let list = hideHidden.value ? drafts.value.filter((f) => f.selected) : drafts.value
+  list = list.filter(belongsToActiveTable)
   const q = outlineKw.value.trim().toLowerCase()
   if (!q) return list
   return list.filter((f) => `${f.display_name} ${f.column_name}`.toLowerCase().includes(q))
@@ -193,7 +226,11 @@ const previewCols = computed(() => {
   const names = preview.value?.columns
   let cols
   if (names?.length) {
-    cols = names.map((name) => drafts.value.find((f) => f.column_name === name) || { column_name: name, display_name: name, kind: 'string', selected: true })
+    cols = names.map((name) => (
+      drafts.value.find((f) => f.column_name === name && belongsToActiveTable(f))
+      || drafts.value.find((f) => f.column_name === name)
+      || { column_name: name, display_name: name, kind: 'string', selected: true }
+    ))
   } else {
     cols = visibleFields.value.filter((f) => f.selected)
   }
@@ -648,11 +685,29 @@ function applyNullShow(opt) {
   nullOpen.value = false
   Message.success(`空值展示已设为「${opt.label}」`)
 }
+function previewSource() {
+  const ds = dataset.value
+  if (!ds) return null
+  const tid = activeModelTableId.value
+  if (tid && tid !== ds.id) {
+    return store.datasets.find((d) => d.id === tid) || ds
+  }
+  return ds
+}
+function loadPreview() {
+  const target = previewSource()
+  if (!target) return
+  preview.value = previewDataset(store, target, 100)
+}
+function selectModelTable(id) {
+  activeModelTableId.value = id
+  loadPreview()
+}
 function refresh() {
   if (!dataset.value) return
   loading.value = true
   setTimeout(() => {
-    preview.value = previewDataset(store, dataset.value, 100)
+    loadPreview()
     loading.value = false
   }, 280)
 }
@@ -686,8 +741,9 @@ watch(dataset, (ds) => {
   placeholders.value = (ds.extra?.placeholders || []).map((p) => ({ ...p }))
   studioFilters.value = (ds.extra?.studioFilters || []).map((f) => ({ ...f }))
   activeFilterId.value = studioFilters.value[0]?.id || ''
-  preview.value = previewDataset(store, ds, 100)
   tab.value = 'preview'
+  activeModelTableId.value = (ds.extra?.tableIds || [])[0] || ds.id || ''
+  loadPreview()
 }, { immediate: true })
 
 watch(() => store.openModelDrawer, syncModelDrawer)
@@ -762,8 +818,24 @@ onMounted(() => {
     <div class="st-body">
       <aside class="st-outline">
         <div class="st-ol-head">
-          <span>字段大纲</span>
+          <span>表</span>
           <button type="button" class="st-mini" title="列表"><icon-list /></button>
+        </div>
+        <div class="st-tables">
+          <button
+            v-for="t in modelTables"
+            :key="t.id"
+            type="button"
+            class="st-tbl"
+            :class="{ on: (activeModelTableId || modelTables[0]?.id) === t.id }"
+            @click="selectModelTable(t.id)"
+          >
+            <icon-storage />
+            <span class="ellipsis">{{ t.display_name }}</span>
+          </button>
+        </div>
+        <div class="st-ol-head st-ol-sub">
+          <span>字段大纲</span>
         </div>
         <label class="st-search">
           <icon-search />
@@ -1101,10 +1173,10 @@ onMounted(() => {
                 <span>过滤字段项</span>
                 <button type="button" class="flt-add" title="添加过滤字段" @click="addFilterField"><icon-plus /></button>
               </div>
-              <button
+              <div
                 v-for="item in studioFilters"
                 :key="item.id"
-                type="button"
+                role="button"
                 class="flt-chip"
                 :class="{ on: activeFilterId === item.id }"
                 @click="activeFilterId = item.id"
@@ -1119,7 +1191,6 @@ onMounted(() => {
                   size="mini"
                   :bordered="false"
                   :style="{ width: '132px' }"
-                  @click.stop
                   @change="(v) => changeFilterField(item, v)"
                 >
                   <a-optgroup v-if="filterableFields.some((x) => x.kind === 'date')" label="日期">
@@ -1133,7 +1204,7 @@ onMounted(() => {
                   </a-optgroup>
                 </a-select>
                 <span class="flt-chip-del" title="移除" @click.stop="removeFilterField(item.id)"><icon-close /></span>
-              </button>
+              </div>
               <div v-if="!studioFilters.length" class="flt-empty">点击右上角 + 添加过滤字段</div>
             </aside>
             <section v-if="activeFilter" class="flt-main">
@@ -1387,6 +1458,15 @@ onMounted(() => {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px 8px; font-size: 14px; font-weight: 500;
 }
+.st-ol-sub { padding-top: 8px; margin-top: 4px; border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.st-tables { display: flex; flex-direction: column; padding: 0 8px 8px; }
+.st-tbl {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 4px;
+  background: transparent; text-align: left; cursor: pointer; font-size: 12px; color: rgba(0, 0, 0, 0.85);
+}
+.st-tbl .ellipsis { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-tbl:hover { background: rgba(0, 0, 0, 0.04); }
+.st-tbl.on { color: rgb(46, 116, 255); }
 .st-mini {
   width: 22px; height: 22px; border: 0; background: transparent; cursor: pointer;
   color: rgba(0, 0, 0, 0.45); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
@@ -1513,15 +1593,27 @@ onMounted(() => {
 }
 .st-fhead, .st-frow {
   display: grid;
-  grid-template-columns: 36px minmax(140px, 1fr) minmax(180px, 1.4fr) 90px 80px 110px minmax(140px, 1fr);
+  grid-template-columns: 36px minmax(0, 1.1fr) minmax(0, 1.4fr) 72px 64px 100px minmax(0, 1fr);
   align-items: center; min-height: 44px; padding: 0 12px; gap: 8px; font-size: 12px;
+}
+.st-fhead > *,
+.st-frow > * {
+  min-width: 0;
+  box-sizing: border-box;
 }
 .st-fhead { color: rgba(0, 0, 0, 0.45); border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
 .st-frow { border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
-.st-fphy { color: rgba(0, 0, 0, 0.45); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-fphy {
+  color: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
 .st-fin {
+  box-sizing: border-box;
   height: 26px; padding: 0 8px; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 4px;
-  background: rgba(255, 255, 255, 0.1); font-size: 12px; color: rgba(0, 0, 0, 0.85); outline: none; min-width: 0; width: 100%;
+  background: #fff; font-size: 12px; color: rgba(0, 0, 0, 0.85); outline: none; min-width: 0; width: 100%;
 }
 .st-fin:focus { border-color: rgb(46, 116, 255); }
 .st-ck { display: flex; align-items: center; justify-content: center; }
@@ -1746,6 +1838,7 @@ onMounted(() => {
 }
 .flt-add:hover { background: rgba(46, 116, 255, 0.08); }
 .flt-chip {
+  box-sizing: border-box;
   display: flex; align-items: center; gap: 4px; width: 100%; height: 32px; margin-bottom: 8px;
   padding: 0 4px 0 8px; border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 4px; background: #fff; cursor: pointer; text-align: left;
 }
