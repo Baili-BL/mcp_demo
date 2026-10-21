@@ -79,10 +79,11 @@ function showView(id) {
     history.replaceState(null, '', '#' + id)
     return
   }
-  if (id === 'dataset-create') {
-    store.openModelDrawer = true
-    cur.value = 'dataset-studio'
-    history.replaceState(null, '', '#dataset-studio')
+  if (id === 'dataset-create' || id === 'dataset-studio') {
+    if (!store.editDatasetId && store.studioDatasetId) store.editDatasetId = store.studioDatasetId
+    store.openModelDrawer = false
+    cur.value = 'dataset-sql'
+    history.replaceState(null, '', '#dataset-sql')
     return
   }
   if (CREATE_IDS.has(id) || LIST_IDS.has(id)) {
@@ -124,11 +125,12 @@ function syncHash() {
     return
   }
   if (TOP_VIEWS.has(h)) cur.value = h
-  else if (h === 'dataset-create') {
-    store.openModelDrawer = true
-    cur.value = 'dataset-studio'
+  else if (h === 'dataset-create' || h === 'dataset-studio') {
+    if (!store.editDatasetId && store.studioDatasetId) store.editDatasetId = store.studioDatasetId
+    store.openModelDrawer = false
+    cur.value = 'dataset-sql'
     ensureDataMenuOpen()
-    history.replaceState(null, '', '#dataset-studio')
+    history.replaceState(null, '', '#dataset-sql')
   } else if (CREATE_IDS.has(h)) {
     cur.value = h
     ensureDataMenuOpen()

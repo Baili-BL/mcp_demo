@@ -145,19 +145,42 @@ function resetBlank(mode) {
   activeFilterId.value = ''
 }
 
+function sqlTextOfDataset(d) {
+  if (d.sql || d.extra?.sql) return d.sql || d.extra.sql
+  if (d.extra?.model) {
+    const tables = (d.extra.tableIds || [])
+      .map((id) => store.datasets.find((t) => t.id === id))
+      .filter(Boolean)
+    const compiled = compileModelSql({
+      tables,
+      fields: d.extra.fields || [],
+      joins: d.extra.joins || [],
+      filters: d.extra.filters || [],
+    })
+    if (compiled) return compiled
+  }
+  const cols = (d.columns || []).map((c) => c.column_name).filter(Boolean)
+  const table = d.table_name || d.display_name || ''
+  if (!table) return ''
+  return `SELECT ${cols.length ? cols.join(', ') : '*'}\nFROM ${table}`
+}
+function loadAsSql(d) {
+  enteredAsSql.value = true
+  step.value = 'sql'
+  const sql = sqlTextOfDataset(d)
+  placeholders.value = mergePlaceholders(sql, d.extra?.placeholders || [])
+  sqlText.value = sql
+  sqlResult.value = null
+  sqlMessage.value = ''
+  if (sql.trim()) nextTick(() => runSql())
+}
 function loadEdit() {
   const d = store.datasets.find((x) => x.id === store.editDatasetId)
   if (!d) return false
   name.value = d.display_name || d.table_name || ''
   sourceId.value = d.data_source_id || sourceId.value
-  if (d.source_type === 'sql') {
-    enteredAsSql.value = true
-    step.value = 'sql'
-    placeholders.value = mergePlaceholders(d.sql || d.extra?.sql || '', d.extra?.placeholders || [])
-    sqlText.value = d.sql || d.extra?.sql || ''
-    sqlResult.value = null
-    sqlMessage.value = ''
-    if (sqlText.value.trim()) nextTick(() => runSql())
+  if (props.createMode === 'sql' || d.source_type === 'sql') {
+    loadAsSql(d)
     return true
   }
   if (d.extra?.model) {
@@ -732,9 +755,9 @@ function finish() {
       : createSqlDataset(store, payload)
     if (error) { Message.warning(error); return }
     Message.success(`SQL 数据集「${dataset.display_name}」已保存`)
-    store.studioDatasetId = dataset.id
+    store.studioDatasetId = ''
+    store.openModelDrawer = false
     store.editDatasetId = dataset.id
-    emit('goto', 'dataset-studio')
     return
   }
   if (!selectedIds.value.length) {

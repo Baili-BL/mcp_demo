@@ -605,31 +605,21 @@ function openSchema(d) {
   schemaDs.value = d
   schemaOpen.value = true
 }
+function openSqlView(d) {
+  const live = d ? (store.datasets.find((x) => x.id === d.id) || d) : null
+  store.openModelDrawer = false
+  store.studioDatasetId = ''
+  store.editDatasetId = live?.id || ''
+  emit('goto', 'dataset-sql')
+}
 function openPreview(d) {
-  store.editDatasetId = ''
-  store.studioDatasetId = d.id
-  emit('goto', 'dataset-studio')
+  openSqlView(d)
 }
 function openEdit(d) {
-  const live = store.datasets.find((x) => x.id === d.id) || d
-  store.studioDatasetId = live.id
-  store.editDatasetId = live.id
-  if (live.source_type === 'sql') {
-    emit('goto', 'dataset-sql')
-    return
-  }
-  store.openModelDrawer = !!(live.extra?.model && (live.extra.tableIds || []).length)
-  emit('goto', 'dataset-studio')
+  openSqlView(d)
 }
-function gotoCreate(mode) {
-  store.editDatasetId = ''
-  store.studioDatasetId = ''
-  if (mode === 'dataset-sql') {
-    emit('goto', 'dataset-sql')
-    return
-  }
-  store.openModelDrawer = true
-  emit('goto', 'dataset-studio')
+function gotoCreate() {
+  openSqlView(null)
 }
 function datasetType(d) {
   if (d.source_type === 'sql') return 'SQL'
@@ -863,9 +853,8 @@ onDeactivated(() => {
           <a-button @click="openReadAccess(null)">读取授权</a-button>
         </a-badge>
         <a-button @click="openCreateFolder(ROOT_FOLDER_ID)">新建文件夹</a-button>
-        <a-button @click="gotoCreate('dataset-sql')">SQL 数据集</a-button>
-        <a-button type="primary" @click="gotoCreate('dataset-create')">
-          <icon-plus /> 创建数据集
+        <a-button type="primary" @click="gotoCreate">
+          <icon-plus /> SQL 数据集
         </a-button>
       </a-space>
     </div>
