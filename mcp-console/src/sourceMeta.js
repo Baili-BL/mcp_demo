@@ -1,4 +1,5 @@
 import { placeholderToolParams } from './placeholders.js'
+import { parseOutputColumns } from './sqlSpec.js'
 
 function col(name, type, comment = '') {
   return { name, type, comment }
@@ -581,8 +582,8 @@ export function createSqlDataset(store, { name, sourceId, sql, columns, folderId
       sample_values: null,
       distinct_count: null,
       null_count: null,
-      semantic_hint: null,
-      description: '',
+      semantic_hint: typeof name === 'string' ? null : (name.semantic_hint || null),
+      description: typeof name === 'string' ? '' : (name.description || ''),
     })),
   }
   return { dataset: pushCreatedDataset(store, dataset) }
@@ -871,13 +872,18 @@ export function previewSql(store, { data_source_id, sql, limit = 100 }) {
   }
   const source = store.sources.find((s) => s.id === data_source_id)
   if (!source) return { error: '数据源不存在' }
-  const cols = ['col_a', 'col_b', 'col_c']
+  const parsed = parseOutputColumns(text)
+  const cols = parsed.columns?.length ? parsed.columns : ['col_a', 'col_b', 'col_c']
   const n = Math.min(Math.max(1, limit), 20)
-  const rows = Array.from({ length: Math.min(n, 5) }, (_, i) => ({
-    col_a: `a_${i + 1}`,
-    col_b: (i + 1) * 10,
-    col_c: `2026-01-${String(i + 1).padStart(2, '0')}`,
-  }))
+  const rows = Array.from({ length: Math.min(n, 5) }, (_, i) => {
+    const row = {}
+    cols.forEach((name, idx) => {
+      if (idx % 3 === 1) row[name] = (i + 1) * 10
+      else if (idx % 3 === 2) row[name] = `2026-01-${String(i + 1).padStart(2, '0')}`
+      else row[name] = `${name}_${i + 1}`
+    })
+    return row
+  })
   return { columns: cols, rows, limit: n, row_count: rows.length }
 }
 

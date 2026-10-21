@@ -19,6 +19,7 @@ const GROUPS = [
       { id: 'users', title: '用户管理与注册', src: '/docs/users.html' },
       { id: 'register', title: '服务与工具注册', src: '/docs/register.html' },
       { id: 'placeholder', title: 'SQL 占位符使用说明', src: '/docs/placeholder.html' },
+      { id: 'sql-spec', title: 'SQL 数据集规范', src: '/docs/sql-spec.html' },
     ],
   },
   {

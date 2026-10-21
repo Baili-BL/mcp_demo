@@ -21,6 +21,7 @@ const host = ref(null)
 let view = null
 const langConf = new Compartment()
 const roConf = new Compartment()
+const phConf = new Compartment()
 
 const sqlHighlight = HighlightStyle.define([
   { tag: [t.keyword, t.operatorKeyword, t.modifier], color: '#0b3fbf', fontWeight: '600' },
@@ -80,7 +81,7 @@ onMounted(() => {
         phHighlight,
         theme,
         EditorView.lineWrapping,
-        props.placeholder ? cmPlaceholder(props.placeholder) : [],
+        phConf.of(props.placeholder ? cmPlaceholder(props.placeholder) : []),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) emit('update:modelValue', u.state.doc.toString())
         }),
@@ -104,6 +105,10 @@ watch(() => props.modelValue, (v) => {
 
 watch(() => [props.dialect, props.schema], () => {
   view?.dispatch({ effects: langConf.reconfigure(langFor(props.dialect, props.schema)) })
+})
+
+watch(() => props.placeholder, (v) => {
+  view?.dispatch({ effects: phConf.reconfigure(v ? cmPlaceholder(v) : []) })
 })
 
 watch(() => props.readonly, (v) => {

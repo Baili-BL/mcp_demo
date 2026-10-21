@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { store, isDbKind, previewSql, createModeledDataset, createSqlDataset, updateModeledDataset, updateSqlDataset, compileModelSql } from '../store'
 import {
@@ -8,6 +8,8 @@ import {
   renamePlaceholderInSql, removePlaceholderFromSql, validatePlaceholders, renderSql,
 } from '../placeholders'
 import { formatSql as formatSqlText } from '../sqlFormat'
+import { checkSqlSpec, parseOutputColumns, suggestColumnDef, tableAliases } from '../sqlSpec'
+import { generateSql } from '../sqlGen'
 import SqlEditor from '../components/SqlEditor.vue'
 import SqlIcon1 from '../components/icons/sql/Icon1.vue'
 import SqlIcon2 from '../components/icons/sql/Icon2.vue'
@@ -61,6 +63,10 @@ const sqlText = ref('')
 const sqlResult = ref(null)
 const sqlMessage = ref('')
 const sqlTab = ref('result')
+const sqlColumnDefs = ref([])
+const specResult = ref({ errors: [], warnings: [], columns: [] })
+const specAlert = ref(false)
+const fieldCfgFilter = ref('all')
 const sqlHistory = ref([])
 const joins = ref([])
 const joinOpen = ref(false)
@@ -73,6 +79,10 @@ const rightFieldKw = ref('')
 const sqlExpanded = ref(false)
 const helpOpen = ref(false)
 const phOpen = ref(false)
+const aiSqlOpen = ref(false)
+const aiSqlPrompt = ref('')
+const aiSqlPreview = ref('')
+const aiSqlError = ref('')
 const placeholders = ref([])
 const phDraft = ref([])
 const phNewOpen = ref(false)
@@ -82,6 +92,10 @@ const previewUserId = ref(store.users.find((u) => u.status === '正常')?.id || 
 const execSql = ref('')
 const execNotes = ref([])
 const sqlEditorEl = ref(null)
+const sqlMainEl = ref(null)
+const sqlResultH = ref(320)
+const splitDrag = ref(false)
+let stopSplit = null
 const filterOpen = ref(false)
 const filterHelpOpen = ref(false)
 const datasetFilters = ref([])
@@ -127,6 +141,10 @@ function resetBlank(mode) {
   sqlMessage.value = ''
   sqlHistory.value = []
   sqlTab.value = 'result'
+  sqlColumnDefs.value = []
+  specResult.value = { errors: [], warnings: [], columns: [] }
+  specAlert.value = false
+  fieldCfgFilter.value = 'all'
   joins.value = []
   joinOpen.value = false
   fieldQuery.value = ''
@@ -135,6 +153,7 @@ function resetBlank(mode) {
   sqlExpanded.value = false
   helpOpen.value = false
   phOpen.value = false
+  aiSqlOpen.value = false
   placeholders.value = []
   phNewOpen.value = false
   execSql.value = ''
@@ -164,14 +183,34 @@ function sqlTextOfDataset(d) {
   if (!table) return ''
   return `SELECT ${cols.length ? cols.join(', ') : '*'}\nFROM ${table}`
 }
+function columnDefOf(c) {
+  return {
+    column_name: c.column_name,
+    data_type: c.data_type || 'varchar',
+    cn: c.semantic_hint || c.cn || '',
+    description: c.description || '',
+  }
+}
+function syncColumnDefs(names) {
+  const prev = new Map(sqlColumnDefs.value.map((c) => [c.column_name, c]))
+  sqlColumnDefs.value = names.map((name) => prev.get(name) || {
+    column_name: name,
+    data_type: 'varchar',
+    cn: '',
+    description: '',
+  })
+}
 function loadAsSql(d) {
   enteredAsSql.value = true
   step.value = 'sql'
   const sql = sqlTextOfDataset(d)
   placeholders.value = mergePlaceholders(sql, d.extra?.placeholders || [])
   sqlText.value = sql
+  sqlColumnDefs.value = (d.columns || []).filter((c) => c.column_name).map(columnDefOf)
   sqlResult.value = null
   sqlMessage.value = ''
+  specResult.value = { errors: [], warnings: [], columns: [] }
+  specAlert.value = false
   if (sql.trim()) nextTick(() => runSql())
 }
 function loadEdit() {
@@ -207,8 +246,33 @@ watch(() => props.createMode, (mode) => {
   resetBlank(mode)
 })
 
+function startSplit(e) {
+  if (e.button != null && e.button !== 0) return
+  e.preventDefault()
+  splitDrag.value = true
+  const startY = e.clientY
+  const startH = sqlResultH.value
+  const move = (ev) => {
+    const main = sqlMainEl.value
+    const max = main ? main.clientHeight - 140 : 640
+    const next = startH - (ev.clientY - startY)
+    sqlResultH.value = Math.max(120, Math.min(Math.max(120, max), next))
+  }
+  const up = () => {
+    splitDrag.value = false
+    window.removeEventListener('mousemove', move)
+    window.removeEventListener('mouseup', up)
+    stopSplit = null
+  }
+  stopSplit = up
+  window.addEventListener('mousemove', move)
+  window.addEventListener('mouseup', up)
+}
 onMounted(() => {
   if (store.editDatasetId) loadEdit()
+})
+onBeforeUnmount(() => {
+  if (stopSplit) stopSplit()
 })
 
 const dbSources = computed(() => store.sources.filter((s) => isDbKind(s.kind)))
@@ -588,11 +652,36 @@ function openSql() {
 
 function insertTableSql(table) {
   const tableName = table.table_name || table.display_name
+  const cols = (table.columns || []).map((c) => c.column_name).filter(Boolean)
+  const select = cols.length ? cols.join(', ') : 'column_name'
   const prefix = sqlText.value.trim() ? `${sqlText.value.trim()}\n` : ''
-  sqlText.value = `${prefix}SELECT *\nFROM ${tableName}\nLIMIT 100`
+  const limit = sqlDialect.value === 'oracle' ? 'FETCH FIRST 100 ROWS ONLY' : 'LIMIT 100'
+  sqlText.value = `${prefix}SELECT ${select}\nFROM ${tableName}\n${limit}`
 }
 
 const sqlDialect = computed(() => store.sources.find((s) => s.id === sourceId.value)?.kind === 'oracle' ? 'oracle' : 'mysql')
+const DB_KIND_LABEL = {
+  mysql: 'MySQL',
+  oracle: 'Oracle',
+  postgresql: 'PostgreSQL',
+  sqlserver: 'SQL Server',
+  clickhouse: 'ClickHouse',
+  doris: 'Doris',
+  hive: 'Hive',
+}
+function sourceKindLabel(kind) {
+  return DB_KIND_LABEL[kind] || kind || ''
+}
+const dialectHint = computed(() => (
+  sqlDialect.value === 'oracle'
+    ? '当前是 Oracle。限制行数写 FETCH FIRST 100 ROWS ONLY，不要写 LIMIT。'
+    : '当前是 MySQL。限制行数写 LIMIT。'
+))
+const sqlPlaceholder = computed(() => (
+  sqlDialect.value === 'oracle'
+    ? 'SELECT index_code, data_time FROM table_name FETCH FIRST 100 ROWS ONLY'
+    : 'SELECT index_code, data_time FROM table_name LIMIT 100'
+))
 const sqlSchema = computed(() => {
   const out = {}
   store.datasets.forEach((d) => {
@@ -603,6 +692,41 @@ const sqlSchema = computed(() => {
   return out
 })
 
+function catalogTables() {
+  return store.datasets
+    .filter((d) => d.data_source_id === sourceId.value && d.source_type !== 'sql' && !d.extra?.model)
+    .map((d) => ({
+      name: d.table_name || d.display_name,
+      comment: d.description || '',
+      kind: d.extra?.source_kind || 'table',
+      columns: (d.columns || []).map((c) => ({
+        name: c.column_name,
+        comment: c.description || '',
+        type: c.data_type || '',
+      })),
+    }))
+}
+function openAiSql() {
+  aiSqlError.value = ''
+  aiSqlPreview.value = ''
+  aiSqlOpen.value = true
+}
+function draftAiSql(prompt) {
+  if (typeof prompt === 'string') aiSqlPrompt.value = prompt
+  const { sql, error } = generateSql(catalogTables(), aiSqlPrompt.value, sqlDialect.value)
+  aiSqlPreview.value = sql || ''
+  aiSqlError.value = error || ''
+}
+function applyAiSql() {
+  if (!aiSqlPreview.value) draftAiSql()
+  if (!aiSqlPreview.value) {
+    if (aiSqlError.value) Message.warning(aiSqlError.value)
+    return
+  }
+  sqlText.value = aiSqlPreview.value
+  aiSqlOpen.value = false
+  Message.success('已写入 SQL，可再改后运行')
+}
 function formatSql() {
   if (!sqlText.value.trim()) return
   const { sql, error } = formatSqlText(sqlText.value, sqlDialect.value)
@@ -712,8 +836,115 @@ function insertFromDraft(p) {
   insertToken({ ...p, name: String(p.name).trim() })
 }
 
+function execSpecErrors(errors) {
+  return (errors || []).filter((err) => !/需要填写中文名和说明/.test(err))
+}
+function specColumns() {
+  return sqlColumnDefs.value.map((c) => ({
+    column_name: c.column_name,
+    data_type: c.data_type,
+    semantic_hint: String(c.cn || '').trim(),
+    description: String(c.description || '').trim(),
+    cn: String(c.cn || '').trim(),
+  }))
+}
+function lookupColumnHint(physical, tableName, tableNames) {
+  const pool = store.datasets.filter((d) => d.data_source_id === sourceId.value && d.source_type !== 'sql' && !d.extra?.model)
+  const preferred = tableName
+    ? pool.filter((d) => d.table_name === tableName || d.display_name === tableName)
+    : []
+  const ranked = [
+    ...preferred,
+    ...pool.filter((d) => tableNames.includes(d.table_name) || tableNames.includes(d.display_name)),
+    ...pool,
+  ]
+  for (const table of ranked) {
+    const col = (table.columns || []).find((c) => c.column_name === physical)
+    if (col && (col.description || col.data_type)) {
+      return { ...col, table: table.table_name || table.display_name, physical }
+    }
+  }
+  return tableName ? { table: tableName, physical } : null
+}
+function fillAiDefs() {
+  const parsed = parseOutputColumns(sqlText.value)
+  if (!parsed.columns?.length) {
+    Message.warning(parsed.error || '请先写出明确的输出列，再补齐中文名和说明')
+    specResult.value = checkSqlSpec({ sql: sqlText.value, placeholders: placeholders.value, columns: specColumns(), dialect: sqlDialect.value })
+    specAlert.value = execSpecErrors(specResult.value.errors).length > 0
+    sqlTab.value = specAlert.value ? 'spec' : 'fields'
+    return
+  }
+  syncColumnDefs(parsed.columns)
+  const { tables, aliases } = tableAliases(sqlText.value)
+  const joined = tables.length > 1
+  let n = 0
+  sqlColumnDefs.value.forEach((col, i) => {
+    const field = parsed.fields?.[i] || { physical: col.column_name, qualifier: '' }
+    const sourceTable = aliases[field.qualifier] || (tables.length === 1 ? tables[0] : '')
+    const hint = lookupColumnHint(field.physical || col.column_name, sourceTable, tables) || {}
+    if (!joined) delete hint.table
+    const sug = suggestColumnDef(col.column_name, hint)
+    if (!String(col.cn || '').trim()) {
+      col.cn = sug.cn
+      n += 1
+    }
+    if (!String(col.description || '').trim()) {
+      col.description = sug.description
+      n += 1
+    }
+    if (sug.data_type && (!col.data_type || col.data_type === 'varchar')) col.data_type = sug.data_type
+  })
+  runSpecCheck({ keepTab: true })
+  sqlTab.value = 'fields'
+  Message.success(n ? `已补齐 ${n} 项中文名或说明` : '中文名和说明都已填写')
+}
+function fieldReady(col) {
+  return !!(String(col?.cn || '').trim() && String(col?.description || '').trim())
+}
+const fieldCfg = computed(() => {
+  const rows = sqlColumnDefs.value
+  const done = rows.filter(fieldReady).length
+  return { total: rows.length, done, open: rows.length - done }
+})
+const fieldCfgRows = computed(() => {
+  if (fieldCfgFilter.value === 'open') return sqlColumnDefs.value.filter((col) => !fieldReady(col))
+  if (fieldCfgFilter.value === 'done') return sqlColumnDefs.value.filter(fieldReady)
+  return sqlColumnDefs.value
+})
+function openFieldConfig() {
+  const parsed = parseOutputColumns(sqlText.value)
+  if (parsed.columns?.length) syncColumnDefs(parsed.columns)
+  else if (!sqlColumnDefs.value.length) {
+    specResult.value = checkSqlSpec({ sql: sqlText.value, placeholders: placeholders.value, columns: specColumns(), dialect: sqlDialect.value })
+  }
+  sqlTab.value = 'fields'
+}
+function runSpecCheck(opts = {}) {
+  const parsed = parseOutputColumns(sqlText.value)
+  if (parsed.columns?.length) syncColumnDefs(parsed.columns)
+  const spec = checkSqlSpec({
+    sql: sqlText.value,
+    placeholders: placeholders.value,
+    columns: specColumns(),
+    dialect: sqlDialect.value,
+  })
+  specResult.value = spec
+  specAlert.value = execSpecErrors(spec.errors).length > 0
+  if (!opts.keepTab) sqlTab.value = specAlert.value || spec.errors.length ? 'spec' : 'result'
+  return spec
+}
 function runSql() {
   const started = Date.now()
+  const parsed = parseOutputColumns(sqlText.value)
+  if (parsed.columns?.length) syncColumnDefs(parsed.columns)
+  const spec = checkSqlSpec({
+    sql: sqlText.value,
+    placeholders: placeholders.value,
+    columns: specColumns(),
+    dialect: sqlDialect.value,
+  })
+  specResult.value = spec
   const check = validatePlaceholders(placeholders.value)
   const rendered = renderSql(sqlText.value, placeholders.value, { user: previewUser.value, groups: store.userGroups })
   execSql.value = rendered.sql
@@ -723,31 +954,36 @@ function runSql() {
     ? { error: blocker }
     : previewSql(store, { data_source_id: sourceId.value, sql: rendered.sql, limit: 100 })
   const duration = Date.now() - started
+  const execErrors = execSpecErrors(spec.errors)
+  specAlert.value = !!result.error || execErrors.length > 0
   if (result.error) {
     sqlResult.value = null
     sqlMessage.value = result.error
     sqlHistory.value = [{ id: `${Date.now()}`, at: new Date().toLocaleTimeString('zh-CN', { hour12: false }), success: false, rows: 0, duration, message: result.error }, ...sqlHistory.value.slice(0, 9)]
+    sqlTab.value = execErrors.length ? 'spec' : 'result'
     return
   }
   sqlResult.value = result
   sqlMessage.value = `运行成功，返回 ${result.row_count || 0} 行`
   sqlHistory.value = [{ id: `${Date.now()}`, at: new Date().toLocaleTimeString('zh-CN', { hour12: false }), success: true, rows: result.row_count || 0, duration, message: 'SELECT 预览' }, ...sqlHistory.value.slice(0, 9)]
-  sqlTab.value = 'result'
+  sqlTab.value = execErrors.length ? 'spec' : 'result'
 }
 
 function finish() {
   if (isSql.value) {
-    const check = validatePlaceholders(placeholders.value)
-    if (check.errors.length) {
-      Message.warning(check.errors[0])
-      openPlaceholders()
+    const spec = runSpecCheck({ keepTab: true })
+    const execErrors = execSpecErrors(spec.errors)
+    specAlert.value = execErrors.length > 0
+    if (spec.errors.length) {
+      sqlTab.value = execErrors.length ? 'spec' : 'fields'
+      Message.warning(execErrors[0] || spec.errors[0])
       return
     }
     const payload = {
       name: name.value,
       sourceId: sourceId.value,
       sql: sqlText.value,
-      columns: sqlResult.value?.columns,
+      columns: specColumns(),
       placeholders: placeholders.value,
     }
     const { error, dataset } = store.editDatasetId
@@ -843,6 +1079,11 @@ const finishLabel = computed(() => {
           <SqlIcon6 :size="16" />
           运行
         </button>
+        <button type="button" class="sql-outline-btn" @click="openAiSql">AI 生成 SQL</button>
+        <button v-if="specAlert" type="button" class="sql-outline-btn" @click="runSpecCheck()">
+          规范检查
+          <span class="ph-count bad">{{ execSpecErrors(specResult.errors).length || specResult.errors.length }}</span>
+        </button>
         <button type="button" class="sql-primary-btn sql-confirm" @click="finish">确认编辑</button>
         <span class="sql-split" />
         <button type="button" class="sql-close" title="关闭" @click="back">
@@ -862,11 +1103,23 @@ const finishLabel = computed(() => {
           </div>
           <div class="side-label">选择数据源</div>
           <label class="source-pick">
-            <icon-storage />
             <a-select v-model="sourceId" allow-search :bordered="false" placeholder="请选择数据源" @change="selectSource">
-              <a-option v-for="s in dbSources" :key="s.id" :value="s.id">{{ s.name }}</a-option>
+              <template #prefix><icon-storage /></template>
+              <template #label="{ data }">
+                <span class="src-selected">
+                  <span class="ellipsis">{{ data?.label }}</span>
+                  <span class="src-kind" :data-kind="sqlDialect">{{ sourceKindLabel(sqlDialect) }}</span>
+                </span>
+              </template>
+              <a-option v-for="s in dbSources" :key="s.id" :value="s.id" :label="s.name">
+                <span class="src-opt">
+                  <span class="ellipsis">{{ s.name }}</span>
+                  <span class="src-kind" :data-kind="s.kind">{{ sourceKindLabel(s.kind) }}</span>
+                </span>
+              </a-option>
             </a-select>
           </label>
+          <p class="src-dialect">{{ dialectHint }}</p>
           <div class="side-tabrow">
             <template v-if="!tableSearchOpen">
               <span class="side-tab on">数据表</span>
@@ -1032,11 +1285,23 @@ const finishLabel = computed(() => {
           </div>
           <div class="side-label">选择数据源</div>
           <label class="source-pick">
-            <icon-storage />
             <a-select v-model="sourceId" allow-search :bordered="false" placeholder="请选择数据源" @change="selectSource">
-              <a-option v-for="s in dbSources" :key="s.id" :value="s.id">{{ s.name }}</a-option>
+              <template #prefix><icon-storage /></template>
+              <template #label="{ data }">
+                <span class="src-selected">
+                  <span class="ellipsis">{{ data?.label }}</span>
+                  <span class="src-kind" :data-kind="sqlDialect">{{ sourceKindLabel(sqlDialect) }}</span>
+                </span>
+              </template>
+              <a-option v-for="s in dbSources" :key="s.id" :value="s.id" :label="s.name">
+                <span class="src-opt">
+                  <span class="ellipsis">{{ s.name }}</span>
+                  <span class="src-kind" :data-kind="s.kind">{{ sourceKindLabel(s.kind) }}</span>
+                </span>
+              </a-option>
             </a-select>
           </label>
+          <p class="src-dialect">{{ dialectHint }}</p>
           <div class="side-tabrow">
             <template v-if="!tableSearchOpen">
               <span class="side-tab on">数据表</span>
@@ -1062,22 +1327,28 @@ const finishLabel = computed(() => {
           </div>
         </div>
       </aside>
-      <section class="sql-main">
+      <section ref="sqlMainEl" class="sql-main" :class="{ 'is-split': splitDrag }">
         <SqlEditor
           ref="sqlEditorEl"
           v-model="sqlText"
           class="sql-editor"
           :dialect="sqlDialect"
           :schema="sqlSchema"
-          placeholder="SELECT * FROM table_name LIMIT 100"
+          :placeholder="sqlPlaceholder"
           @run="runSql"
           @format="formatSql"
         />
-        <div class="sql-result">
+        <div class="sql-resize" role="separator" aria-orientation="horizontal" aria-label="拖拽调整高度" @mousedown="startSplit" />
+        <div class="sql-result" :style="{ height: sqlResultH + 'px' }">
           <div class="side-tabs result-tabs" style="padding: 0 16px">
             <button type="button" :class="{ on: sqlTab === 'result' }" @click="sqlTab = 'result'">运行结果</button>
             <button type="button" :class="{ on: sqlTab === 'exec' }" @click="sqlTab = 'exec'">实际执行 SQL</button>
             <button type="button" :class="{ on: sqlTab === 'history' }" @click="sqlTab = 'history'">历史记录</button>
+            <button type="button" :class="{ on: sqlTab === 'spec' }" @click="runSpecCheck()">规范检查</button>
+            <button type="button" :class="{ on: sqlTab === 'fields' }" @click="openFieldConfig">
+              配置字段
+              <span v-if="fieldCfg.total" class="ph-count" :class="{ bad: fieldCfg.open }">{{ fieldCfg.done }}/{{ fieldCfg.total }}</span>
+            </button>
             <span class="tab-gap" />
             <label v-if="needsIdentity" class="preview-as">
               预览身份
@@ -1099,6 +1370,45 @@ const finishLabel = computed(() => {
               <span>{{ h.at }}</span>
               <span :class="h.success ? 'ok' : 'bad'">{{ h.success ? '成功' : '失败' }}</span>
               <span>{{ h.success ? `${h.rows} 行 · ${h.duration}ms` : h.message }}</span>
+            </div>
+          </div>
+          <div v-else-if="sqlTab === 'spec'" class="sql-pad">
+            <div v-if="!specResult.errors.length && !specResult.warnings.length && !sqlColumnDefs.length" class="muted" style="text-align:center; padding: 32px 0">点击「规范检查」查看 SQL 是否能作为 MCP 工具使用。</div>
+            <div v-if="specResult.errors.length" class="spec-block">
+              <div v-for="err in specResult.errors" :key="err" class="spec-line bad">{{ err }}</div>
+            </div>
+            <div v-if="specResult.warnings.length" class="spec-block">
+              <div v-for="warn in specResult.warnings" :key="warn" class="spec-line warn">{{ warn }}</div>
+            </div>
+            <div v-if="fieldCfg.total" class="spec-toolbar">
+              <span>字段配置 {{ fieldCfg.done }}/{{ fieldCfg.total }}。未配置的列还缺中文名或说明。</span>
+              <button type="button" class="sql-text-btn" @click="openFieldConfig">去配置字段</button>
+            </div>
+          </div>
+          <div v-else-if="sqlTab === 'fields'" class="sql-pad">
+            <div v-if="!sqlColumnDefs.length" class="muted" style="text-align:center; padding: 32px 0">{{ specResult.errors[0] || '写出 SELECT 列名后，这里配置中文名和字段说明。' }}</div>
+            <div v-else class="spec-fields">
+              <div class="spec-toolbar">
+                <div class="cfg-filters">
+                  <button type="button" :class="{ on: fieldCfgFilter === 'all' }" @click="fieldCfgFilter = 'all'">全部 {{ fieldCfg.total }}</button>
+                  <button type="button" :class="{ on: fieldCfgFilter === 'open' }" @click="fieldCfgFilter = 'open'">未配置 {{ fieldCfg.open }}</button>
+                  <button type="button" :class="{ on: fieldCfgFilter === 'done' }" @click="fieldCfgFilter = 'done'">已配置 {{ fieldCfg.done }}</button>
+                </div>
+                <button type="button" class="sql-outline-btn" @click="fillAiDefs">AI 补齐</button>
+              </div>
+              <div class="spec-fields-hd">
+                <span>输出列</span>
+                <span>状态</span>
+                <span>中文名</span>
+                <span>说明</span>
+              </div>
+              <div v-if="!fieldCfgRows.length" class="muted" style="padding: 16px 0">这个状态下没有字段。</div>
+              <div v-for="col in fieldCfgRows" :key="col.column_name" class="spec-fields-row">
+                <span class="mono">{{ col.column_name }}</span>
+                <span class="cfg-tag" :class="fieldReady(col) ? 'done' : 'open'">{{ fieldReady(col) ? '已配置' : '未配置' }}</span>
+                <a-textarea v-model="col.cn" size="small" :auto-size="{ minRows: 1, maxRows: 4 }" placeholder="如 指标代码" />
+                <a-textarea v-model="col.description" size="small" :auto-size="{ minRows: 1, maxRows: 6 }" placeholder="字段说明，可直接用列 comment" />
+              </div>
             </div>
           </div>
           <div v-else-if="sqlTab === 'result'" class="sql-pad">
@@ -1227,13 +1537,30 @@ const finishLabel = computed(() => {
       </div>
     </Teleport>
 
+    <a-modal v-model:visible="aiSqlOpen" title="AI 生成 SQL" :width="640" unmount-on-close :footer="false">
+      <p class="ai-sql-hint">用一句话描述要查的数据。生成结果来自当前数据源已同步的表和字段注释，写入后还可以改。</p>
+      <a-textarea v-model="aiSqlPrompt" :auto-size="{ minRows: 3, maxRows: 6 }" placeholder="例如：在营指标关联序列，统计每个指标的点数、最大值和最早日期" />
+      <div class="ai-sql-examples">
+        <button type="button" @click="draftAiSql('在营指标关联序列，统计每个指标的点数、最大值和最早日期')">在营指标关联序列</button>
+        <button type="button" @click="draftAiSql('查询指标代码、指标名称、单位和最新值')">指标代码、名称、单位和最新值</button>
+      </div>
+      <div v-if="aiSqlError" class="spec-line bad">{{ aiSqlError }}</div>
+      <pre v-if="aiSqlPreview" class="exec-sql mono">{{ aiSqlPreview }}</pre>
+      <div class="ai-sql-actions">
+        <a-button @click="aiSqlOpen = false">取消</a-button>
+        <a-button @click="draftAiSql()">生成</a-button>
+        <a-button type="primary" :disabled="!aiSqlPreview" @click="applyAiSql">写入编辑器</a-button>
+      </div>
+    </a-modal>
     <a-modal v-model:visible="helpOpen" title="常见问题" :width="480" unmount-on-close :footer="false">
       <ul class="sql-help">
-        <li>SQL 数据集仅支持 SELECT 查询，运行后按当前数据源抽样预览。</li>
-        <li>点击左侧数据表可插入 <span class="mono">SELECT * FROM 表名 LIMIT 100</span>。</li>
+        <li>SQL 数据集会发布成 MCP 工具，只允许一条只读 SELECT。禁止 <span class="mono">SELECT *</span>，每个输出列都要填写中文名和说明。</li>
+        <li>点击左侧数据表会插入该表的明确列。MySQL 用 <span class="mono">LIMIT 100</span>，Oracle 用 <span class="mono">FETCH FIRST 100 ROWS ONLY</span>，数据源名称旁会标出类型。</li>
+        <li>「AI 生成 SQL」按当前数据源里已同步的表和字段注释起草 SELECT。写入编辑器后还可以改。</li>
         <li>
-          支持值 <span class="mono">{{ "'$val{name}'" }}</span>、表达式 <span class="mono">{{ '$expr{字段:name}' }}</span>、条件、加速、标签、系统六类占位符，在「占位符管理」里设置变量类型和默认值。
+          支持值 <span class="mono">{{ "'$val{name}'" }}</span>、表达式 <span class="mono">{{ '$expr{字段:name}' }}</span>、条件、加速、标签、系统六类占位符，在「占位符管理」里设置变量类型和默认值。用在 SELECT 里的占位符必须设置全局默认值。
         </li>
+        <li>限制原因见帮助中心 <a href="/docs/sql-spec.html" target="_blank">SQL 数据集规范</a>。</li>
       </ul>
       <div style="text-align:right; margin-top: 16px">
         <a-button type="primary" @click="helpOpen = false">知道了</a-button>
@@ -1720,6 +2047,19 @@ const finishLabel = computed(() => {
 .sql-primary-btn :deep(svg),
 .sql-close :deep(svg) { display: block; overflow: hidden; }
 .sql-help { margin: 0; padding-left: 18px; color: rgba(0, 0, 0, 0.65); line-height: 1.8; }
+.ai-sql-hint { margin: 0 0 10px; font-size: 13px; color: rgba(0, 0, 0, 0.65); line-height: 1.6; }
+.ai-sql-examples { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.ai-sql-examples button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d9e0e8;
+  border-radius: 4px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+}
+.ai-sql-examples button:hover { border-color: #2e74ff; color: #2e74ff; }
+.ai-sql-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .create-head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .sql-head .create-head-left { gap: 0; }
 .icon-btn {
@@ -1854,16 +2194,51 @@ const finishLabel = computed(() => {
 .source-pick {
   display: flex;
   align-items: center;
-  gap: 8px;
   height: 36px;
   margin: 0 8px 4px 12px;
-  padding: 0 9px;
   border-radius: 4px;
   background: rgba(46, 116, 255, 0.08);
   color: rgba(0, 0, 0, 0.65);
 }
-.source-pick :deep(.arco-select) { flex: 1; min-width: 0; }
-.source-pick :deep(.arco-select-view) { background: transparent; padding: 0; height: 34px; min-height: 34px; font-size: 12px; color: rgba(0, 0, 0, 0.85); }
+.source-pick :deep(.arco-select) { flex: 1; min-width: 0; width: 100%; }
+.source-pick :deep(.arco-select-view) {
+  background: transparent;
+  padding: 0 9px;
+  height: 36px;
+  min-height: 36px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.85);
+}
+.source-pick :deep(.arco-select-view-value) { display: flex; width: 100%; }
+.source-pick :deep(.arco-select-view-prefix) {
+  padding-right: 8px;
+  color: rgba(0, 0, 0, 0.65);
+}
+.src-opt, .src-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.src-kind {
+  flex: none;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #e8f3ff;
+  color: #2e74ff;
+  font-size: 11px;
+  line-height: 18px;
+}
+.src-kind[data-kind="oracle"] { background: #fff3e8; color: #d9480f; }
+.src-dialect {
+  margin: 0 12px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: rgba(0, 0, 0, 0.45);
+}
 .side-tabrow {
   display: flex;
   align-items: center;
@@ -2581,13 +2956,71 @@ const finishLabel = computed(() => {
   flex-shrink: 0;
   background: #fff;
 }
-.sql-main { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; }
-.sql-editor { width: 100%; height: 100%; min-height: 0; }
-.sql-result { border-top: 1px solid #d9e0e8; display: flex; flex-direction: column; min-height: 0; background: #fff; }
+.sql-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.sql-main.is-split { cursor: row-resize; user-select: none; }
+.sql-editor { width: 100%; flex: 1; min-height: 120px; }
+.sql-resize {
+  flex: none;
+  height: 8px;
+  margin: -4px 0;
+  width: 100%;
+  cursor: row-resize;
+  position: relative;
+  z-index: 2;
+}
+.sql-resize::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 1px;
+  background: #d9e0e8;
+}
+.sql-resize:hover::after,
+.sql-main.is-split .sql-resize::after { height: 2px; top: 3px; background: #2e74ff; }
+.sql-result { flex: none; display: flex; flex-direction: column; min-height: 0; background: #fff; overflow: hidden; }
 .sql-pad { padding: 12px 16px; overflow: auto; flex: 1; }
 .hist-row { display: grid; grid-template-columns: 110px 70px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid #d9e0e8; font-size: 13px; }
 .ok { color: #00b42a; }
 .bad { color: #f53f3f; }
+.spec-block { margin-bottom: 12px; }
+.spec-line { padding: 6px 0; font-size: 13px; line-height: 1.5; }
+.spec-line.warn { color: #d9480f; }
+.spec-fields { display: flex; flex-direction: column; gap: 8px; }
+.spec-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; font-size: 12px; color: rgba(0, 0, 0, 0.45); }
+.spec-fields-hd,
+.spec-fields-row { display: grid; grid-template-columns: 168px 72px 180px 1fr; gap: 8px; align-items: center; }
+.spec-fields-row { align-items: start; }
+.spec-fields-row .mono,
+.spec-fields-row .cfg-tag { margin-top: 5px; }
+.spec-fields-row :deep(textarea) {
+  font-size: 12px;
+  line-height: 20px;
+  resize: none;
+}
+.spec-fields-hd { font-size: 12px; color: rgba(0, 0, 0, 0.45); }
+.cfg-filters { display: flex; gap: 6px; }
+.cfg-filters button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d9e0e8;
+  border-radius: 4px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+}
+.cfg-filters button.on { border-color: #2e74ff; color: #2e74ff; background: rgba(46, 116, 255, 0.06); }
+.cfg-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.cfg-tag.open { color: #d9480f; background: #fff3e8; }
+.cfg-tag.done { color: #0f8a5f; background: #e8ffea; }
 .ds-title { font-weight: 600; }
 .flt-sheet {
   font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;

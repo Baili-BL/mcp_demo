@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL 数据集规范</title>
+<link rel="stylesheet" href="/docs/article.css">
+<style>
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .toc a {
+    font-size: 13px; color: var(--ink-2); text-decoration: none;
+    border: 1px solid var(--line); background: var(--card);
+    padding: 4px 12px; border-radius: 999px;
+  }
+  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+  .rule { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
+  .rule:last-child { border-bottom: none; }
+  .rule .x { color: #c5283d; font-weight: 700; }
+  .rule .w { color: #d9480f; font-weight: 700; }
+  .rule .ok { color: #0f8a5f; font-weight: 700; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 6px 18px; margin: 12px 0;
+  }
+  pre .c { color: #8b9098; }
+  pre .k { color: #ffb86b; }
+  pre .p { color: #7dd3fc; }
+</style>
+</head>
+<body>
+<div class="wrap wide">
+  <p class="kicker">Dataset · SQL 规范</p>
+  <h1>SQL 数据集规范</h1>
+  <p class="lede">
+    SQL 数据集会被发布成 MCP 工具。调用方和模型只能看到你写出的列、中文名和说明，所以保存前要做规范检查。
+    不通过就不能保存。占位符的写法见 <a href="/docs/placeholder.html">SQL 占位符使用说明</a>。
+  </p>
+  <nav class="toc">
+    <a href="#why">为什么要检查</a>
+    <a href="#readonly">只读且只有一条</a>
+    <a href="#columns">禁止星号</a>
+    <a href="#name">列名</a>
+    <a href="#define">中文名和说明</a>
+    <a href="#limit">LIMIT</a>
+    <a href="#ph">占位符</a>
+    <a href="#sample">可保存的例子</a>
+  </nav>
+
+  <section id="why">
+    <h2>为什么要检查</h2>
+    <p>数据集保存之后，可以在「发布工具」里变成一个 MCP 工具。模型通过 <code>tools/list</code> 看到参数名和说明，再决定怎么调用。SQL 如果含糊，工具就没有可用的字段定义。</p>
+    <p>编辑页点击「规范检查」，或直接点「确认编辑」。错误会列在结果区的「规范检查」页，补完后再保存。</p>
+  </section>
+
+  <section id="readonly">
+    <h2>只允许一条只读查询</h2>
+    <p>MCP 工具只查数，不改库，也不在一次调用里执行多段语句。</p>
+    <div class="card">
+      <div class="rule"><span class="ok">✓</span><span>一条 <code>SELECT</code>，或以 <code>WITH</code> 开头、最后落到 <code>SELECT</code> 的查询。</span></div>
+      <div class="rule"><span class="x">✕</span><span>两条语句用分号隔开。去掉末尾那一个分号不算两条。</span></div>
+      <div class="rule"><span class="x">✕</span><span><code>INSERT</code>、<code>UPDATE</code>、<code>DELETE</code>、<code>DROP</code>、<code>ALTER</code>、<code>TRUNCATE</code>、<code>CREATE</code>，以及 <code>INTO OUTFILE</code>。</span></div>
+    </div>
+    <p>原因：工具账号按只读来用。写操作或一次执行多段 SQL，会超出这个工具该做的事。</p>
+  </section>
+
+  <section id="columns">
+    <h2>禁止 SELECT *</h2>
+    <p>星号会随表结构变化，工具无法知道返回了哪些字段，也没法逐列写中文名和说明。</p>
+    <div class="card">
+      <div class="rule"><span class="x">✕</span><span><code>SELECT *</code>，以及 <code>t.*</code>。</span></div>
+      <div class="rule"><span class="ok">✓</span><span><code>COUNT(*)</code> 可以，它不是把整行展开。这种表达式要写 <code>AS</code> 别名。</span></div>
+    </div>
+    <pre><span class="c">-- 不行</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> base_from_ths_data
+
+<span class="c">-- 可以</span>
+<span class="k">SELECT</span> index_code, data_time, value
+<span class="k">FROM</span> base_from_ths_data</pre>
+    <p>点击左侧数据表时，编辑器会插入该表已经同步到的列名，而不是星号。</p>
+  </section>
+
+  <section id="name">
+    <h2>列名必须是标识符</h2>
+    <p>输出列名会成为工具 schema 里的字段名，调用方按这个名字传参、读结果。所以列名要用字母或下划线开头，后面只含字母、数字和下划线。</p>
+    <div class="card">
+      <div class="rule"><span class="ok">✓</span><span><code>index_code</code>、<code>data_time</code>、<code>SUM(value) AS total_value</code></span></div>
+      <div class="rule"><span class="x">✕</span><span>表达式没有 <code>AS</code> 别名，或别名带空格、中文、点号。</span></div>
+      <div class="rule"><span class="x">✕</span><span>两个输出列同名。用 <code>AS</code> 区分。</span></div>
+    </div>
+  </section>
+
+  <section id="define">
+    <h2>每个输出列都要下定义</h2>
+    <p>规范检查页会列出输出列。每一列都要填：</p>
+    <ul>
+      <li><b>中文名</b>：给人看的字段名，例如「指标代码」。</li>
+      <li><b>说明</b>：这个字段是什么、调用时怎么用。这段文字会写进工具参数的 <code>description</code>，模型靠它选择参数。</li>
+    </ul>
+    <p>缺任何一列的中文名或说明，都不能保存。再次打开数据集时，这两项会回显。</p>
+    <p>配置字段里的「AI 补齐」会根据当前数据源里的字段注释，以及列名本身，补上还空着的中文名和说明。已经写过的内容不会被盖掉，补完后仍可再改。</p>
+    <p>编辑器顶部的「AI 生成 SQL」按当前数据源已同步的表和字段注释起草一条 SELECT。它只写入编辑器，不会直接保存。</p>
+    <p>表关联时请写出 <code>表别名.列名</code>。两边都有的列（例如两张表都有 <code>index_code</code>）要用 <code>AS</code> 分成两个输出名，否则规范检查不通过。AI 补齐会按别名找到来源表，说明里带上来自哪张表。</p>
+  </section>
+
+  <section id="limit">
+    <h2>没有 LIMIT 只提示</h2>
+    <p>SQL 里可以不写行数限制。没有它时，规范检查给一条提示，仍然可以保存。</p>
+    <ul>
+      <li>MySQL 写 <code>LIMIT 100</code>。</li>
+      <li>Oracle 写 <code>FETCH FIRST 100 ROWS ONLY</code>，不要写 <code>LIMIT</code>。数据源上会标出类型。</li>
+      <li>编辑页预览最多 100 行。</li>
+      <li>发布成工具后，默认最多 500 行，上限 5000。</li>
+    </ul>
+    <p>行数上限在调用侧控制，避免一次把整表返回给模型。</p>
+  </section>
+
+  <section id="ph">
+    <h2>占位符</h2>
+    <p>占位符的类型、默认值和生效范围，仍按 <a href="/docs/placeholder.html">SQL 占位符使用说明</a> 配置。规范检查会带上那些错误。</p>
+    <div class="callout">用在 <code>SELECT</code> 列表里的值、表达式、条件占位符，必须设置<b>全局生效</b>的默认值。否则工具不传参时，这一列没有可用的值。</div>
+  </section>
+
+  <section id="sample">
+    <h2>可保存的例子</h2>
+    <pre><span class="k">SELECT</span>
+  index_code,
+  data_time,
+  value
+<span class="k">FROM</span> base_from_ths_data
+<span class="k">WHERE</span> index_code <span class="k">IN</span> (<span class="p">'$val{index_code}'</span>)
+<span class="k">LIMIT</span> 100</pre>
+    <p>然后在「规范检查」里为 <code>index_code</code>、<code>data_time</code>、<code>value</code> 填上中文名和说明，再点「确认编辑」。</p>
+  </section>
+
+  <footer>产品设计 · SQL 数据集规范 · 对照数据集编辑页的「规范检查」</footer>
+</div>
+</body>
+</html>
