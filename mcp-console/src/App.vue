@@ -58,7 +58,9 @@ const views = { overview: Overview, sources: Sources, datasets: Datasets, securi
 const cur = ref('sources')
 const collapsed = ref(false)
 const search = ref('')
+const noticeClosed = ref(false)
 const openKeys = ref(['org', 'data', 'mcp', 'ops'])
+const openNotices = computed(() => store.alerts.filter((a) => a.st === '未处理'))
 const shell = computed(() => {
   if (TOP_VIEWS.has(cur.value)) return cur.value
   return 'app'
@@ -255,6 +257,26 @@ onBeforeUnmount(() => {
         </a-dropdown>
       </div>
     </header>
+
+    <div v-if="openNotices.length && !noticeClosed" class="sys-notice" role="status">
+      <icon-exclamation-circle-fill class="sys-notice-ico" />
+      <div class="sys-notice-body">
+        <button
+          v-for="(a, i) in openNotices"
+          :key="`${a.t}-${a.obj}-${i}`"
+          type="button"
+          class="sys-notice-line"
+          @click="showView('alerts')"
+        >
+          <span class="sys-notice-lv">{{ a.level }}</span>
+          <span class="sys-notice-obj">{{ a.obj }}</span>
+          <span class="sys-notice-ct">{{ a.ct }}</span>
+        </button>
+      </div>
+      <button type="button" class="sys-notice-x" aria-label="关闭通知" @click="noticeClosed = true">
+        <icon-close />
+      </button>
+    </div>
 
     <a-layout class="app-body" :class="{ 'arco-layout-has-sider': siderOn }">
       <a-layout-sider

@@ -1,58 +1,59 @@
-<script setup>
+﻿<script setup>
 import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import {
-  store, DATABASE_TYPES, VENDOR_LABELS, inferConnector, isDbKind, servicesBoundTo,
-  detachSource, datasetsOfSource, testSourceConnection, syncSchema, linkedToolsOfDataset,
-  forgetDatasets, isReadControlled,
+  store, inferConnector, isDbKind,
+  detachSource, datasetsOfSource, testSourceConnection, syncSchema,
+  forgetDatasets,
 } from '../store'
 import CreateSourceWizard from '../components/CreateSourceWizard.vue'
+import DbTypeIcon from '../components/DbTypeIcon.vue'
 
 const emit = defineEmits(['goto'])
 
 const sourceQuery = ref('')
+const tableQuery = ref('')
 const activeId = ref(store.sources.find((s) => s.kind === 'mysql')?.id || store.sources[0]?.id || '')
 const busyId = ref('')
 const tip = ref(null)
 const wizardOpen = ref(false)
 const editingSource = ref(null)
+const moreId = ref('')
 
 const selected = computed(() => store.sources.find((s) => s.id === activeId.value) || null)
-const grouped = computed(() => {
+const sourceList = computed(() => {
   const q = sourceQuery.value.trim().toLowerCase()
-  const cats = [
-    { category: '数据库', kinds: DATABASE_TYPES.map((t) => t.type) },
-    { category: '接口', kinds: ['http'] },
-  ]
-  return cats.map((c) => ({
-    category: c.category,
-    items: store.sources.filter((s) => {
-      if (!c.kinds.includes(s.kind)) return false
-      if (!q) return true
-      return `${s.name} ${s.code} ${s.host || ''} ${s.database || ''}`.toLowerCase().includes(q)
-    }),
-  })).filter((g) => g.items.length)
+  return store.sources.filter((s) => {
+    if (!q) return true
+    return `${s.name} ${s.code} ${s.host || ''} ${s.database || ''} ${s.user || ''}`.toLowerCase().includes(q)
+  })
 })
-const sourceDatasets = computed(() => (selected.value ? datasetsOfSource(selected.value.id) : []))
-const selectedConnector = computed(() => inferConnector(selected.value))
+const sourceDatasets = computed(() => {
+  const rows = selected.value ? datasetsOfSource(selected.value.id) : []
+  const q = tableQuery.value.trim().toLowerCase()
+  if (!q) return rows
+  return rows.filter((d) => `${d.display_name || ''} ${d.table_name || ''} ${d.description || ''}`.toLowerCase().includes(q))
+})
 
-function targetOf(s) {
-  if (!s) return '—'
-  if (s.kind === 'http') return s.baseUrl || '—'
-  const db = s.database ? `/${s.database}` : ''
-  return s.host ? `${s.host}:${s.port || 3306}${db}` : '—'
+function sourceMeta(s) {
+  const who = s.user || inferConnector(s).label
+  const when = s.lastCheck || '尚未检查'
+  return `${who} · ${when}`
 }
-function statusText(s) {
-  if (!s.enabled || s.status === 'disabled') return '已停用'
-  if (s.status === 'connected') return '已连通'
-  if (s.status === 'failed') return '连接失败'
-  return '未探测'
-}
-function statusColor(s) {
-  const t = statusText(s)
-  if (t === '已连通') return 'green'
-  if (t === '连接失败') return 'red'
-  return 'gray'
+function mcpToolsOfSource(src) {
+  const ids = new Set(datasetsOfSource(src.id).map((d) => d.id))
+  const names = new Set()
+  store.tools.forEach((t) => {
+    const published = t.dataset?.sourceId === src.id || (t.dataset?.datasetId && ids.has(t.dataset.datasetId))
+    const reads = (t.reads || []).some((id) => ids.has(id))
+    if (published || reads) names.add(t.cn ? `${t.cn}（${t.name}）` : t.name)
+  })
+  store.readRequests.forEach((r) => {
+    if (r.status === 'rejected' || !ids.has(r.datasetId)) return
+    const tool = store.tools.find((t) => t.name === r.tool)
+    names.add(tool?.cn ? `${tool.cn}（${tool.name}）` : r.tool)
+  })
+  return [...names]
 }
 watch(selected, (s) => {
   if (!s && store.sources[0]) activeId.value = store.sources[0].id
@@ -110,12 +111,25 @@ async function onSync(src) {
   }
 }
 
+function onSourceMore(key, src) {
+  activeId.value = src.id
+  if (key === 'delete') onDelete(src)
+}
 function onDelete(src) {
-  const bound = servicesBoundTo(src)
+  const tools = mcpToolsOfSource(src)
+  if (tools.length) {
+    Modal.warning({
+      title: `无法删除「${src.name}」`,
+      content: `该数据源仍被 MCP 工具使用：${tools.join('、')}。请先删除这些 MCP 工具，再删除数据源。`,
+      okText: '知道了',
+      hideCancel: true,
+    })
+    return
+  }
   const n = datasetsOfSource(src.id).length
   Modal.confirm({
     title: `删除数据源「${src.name}」？`,
-    content: `将解除服务绑定${bound.length ? `（${bound.map((s) => s.name).join('、')}）` : ''}，并移除关联的 ${n} 个数据集。`,
+    content: n ? `将移除该连接，以及尚未发布成工具的 ${n} 个数据集。` : '将移除该连接。',
     okText: '删除',
     onOk: () => {
       const removedIds = new Set(store.datasets.filter((d) => d.data_source_id === src.id).map((d) => d.id))
@@ -128,9 +142,14 @@ function onDelete(src) {
     },
   })
 }
-function goDatasets(sourceId) {
-  store.datasetFlt.sourceId = sourceId || ''
-  emit('goto', 'datasets')
+function createSql() {
+  if (!selected.value || !isDbKind(selected.value.kind)) {
+    Message.warning('请先选择数据库连接')
+    return
+  }
+  store.editDatasetId = ''
+  store.datasetFlt.sourceId = selected.value.id
+  emit('goto', 'dataset-sql')
 }
 onDeactivated(() => {
   wizardOpen.value = false
@@ -146,7 +165,6 @@ onDeactivated(() => {
         <h2>数据源</h2>
         <div class="desc">选择数据源类型 → 配置连接 → 连接测试 → 确定。测通后同步 Schema，生成数据集。</div>
       </div>
-      <a-button type="primary" @click="openWizard">新建数据源</a-button>
     </div>
 
     <a-alert v-if="tip" :type="tip.ok ? 'success' : 'error'" style="margin-bottom: 12px" closable @close="tip = null">
@@ -155,167 +173,223 @@ onDeactivated(() => {
 
     <div class="ds-layout">
       <aside class="ds-side">
-        <a-input-search v-model="sourceQuery" allow-clear placeholder="搜索数据源" style="margin-bottom: 12px" />
-        <div v-for="g in grouped" :key="g.category" class="ds-group">
-          <div class="ds-group-title">{{ g.category }}</div>
-          <button
-            v-for="s in g.items"
-            :key="s.id"
-            type="button"
-            class="ds-item"
-            :class="{ active: s.id === activeId }"
-            @click="activeId = s.id"
-          >
-            <div class="ds-item-name">{{ s.name }}</div>
-            <div class="muted mono">{{ inferConnector(s).label }} · {{ statusText(s) }}</div>
-          </button>
+        <div class="ds-side-hd">
+          <span>我的数据源</span>
+          <a-input-search v-model="sourceQuery" allow-clear size="small" placeholder="搜索" />
         </div>
-        <a-empty v-if="!grouped.length" description="暂无数据源" />
+        <div v-if="sourceList.length" class="ds-list">
+          <div
+            v-for="s in sourceList"
+            :key="s.id"
+            class="ds-item"
+            :class="{ active: s.id === activeId, 'ops-on': moreId === s.id }"
+            role="button"
+            tabindex="0"
+            @click="activeId = s.id"
+            @keydown.enter="activeId = s.id"
+          >
+            <DbTypeIcon :type="s.kind" />
+            <span class="ds-item-body">
+              <span class="ds-item-name ellipsis">{{ s.name }}</span>
+              <span class="ds-item-meta ellipsis">{{ sourceMeta(s) }}</span>
+            </span>
+            <span class="ds-item-ops" @click.stop>
+              <button type="button" :aria-label="`编辑 ${s.name}`" title="编辑" @click.stop="openEdit(s)"><icon-edit /></button>
+              <a-dropdown trigger="click" position="br" @popup-visible-change="(v) => { moreId = v ? s.id : '' }" @select="(k) => onSourceMore(k, s)">
+                <button type="button" :aria-label="`更多 ${s.name}`" title="更多"><icon-more-vertical /></button>
+                <template #content>
+                  <a-doption value="delete">
+                    <template #icon><icon-delete /></template>
+                    删除
+                  </a-doption>
+                </template>
+              </a-dropdown>
+            </span>
+          </div>
+        </div>
+        <a-empty v-else description="暂无数据源" />
       </aside>
 
-      <section v-if="selected" class="ds-main">
-        <div class="ds-main-head">
-          <div>
-            <h3>{{ selected.name }}</h3>
-            <div class="muted mono">{{ targetOf(selected) }}</div>
+      <div class="ds-main-col">
+        <button type="button" class="ds-create-bar" @click="openWizard">新建数据源</button>
+        <section v-if="selected" class="ds-main">
+        <div class="ds-main-bar">
+          <div class="ds-tabs">数据表</div>
+          <div class="ds-toolbar">
+            <a-input-search v-model="tableQuery" allow-clear placeholder="搜索表名" style="width: 200px" />
+            <a-button :disabled="!isDbKind(selected.kind)" @click="createSql">SQL 创建数据集</a-button>
+            <a-button :loading="busyId === selected.id" @click="onTest(selected)">测试连接</a-button>
+            <a-button v-if="isDbKind(selected.kind)" type="outline" :loading="busyId === selected.id" @click="onSync(selected)">同步 Schema</a-button>
           </div>
-          <a-space wrap>
-            <a-tag :color="statusColor(selected)">{{ statusText(selected) }}</a-tag>
-            <a-button size="small" :loading="busyId === selected.id" @click="onTest(selected)">测试连接</a-button>
-            <a-button v-if="isDbKind(selected.kind)" size="small" type="outline" :loading="busyId === selected.id" @click="onSync(selected)">同步 Schema</a-button>
-            <a-button size="small" @click="openEdit(selected)">编辑</a-button>
-            <a-button size="small" status="danger" @click="onDelete(selected)">删除</a-button>
-          </a-space>
         </div>
 
-        <a-descriptions :column="2" size="medium" bordered style="margin-bottom: 16px">
-          <a-descriptions-item label="数据源类型">{{ selectedConnector.label }}</a-descriptions-item>
-          <a-descriptions-item v-if="VENDOR_LABELS[selectedConnector.vendor]" label="来源">{{ VENDOR_LABELS[selectedConnector.vendor] }}</a-descriptions-item>
-          <a-descriptions-item v-if="selected.kind === 'mysql'" label="数据库版本">{{ selected.dbVersion || '—' }}</a-descriptions-item>
-          <a-descriptions-item label="账号">{{ selected.user || '—' }}</a-descriptions-item>
-          <a-descriptions-item label="环境变量"><span class="mono">{{ selected.envKey }}</span></a-descriptions-item>
-          <a-descriptions-item v-if="selected.kind === 'mysql'" label="SSL">{{ selected.ssl ? '已开启' : '关闭' }}</a-descriptions-item>
-          <a-descriptions-item label="最近同步">{{ selected.lastSyncedAt || '尚未同步' }}</a-descriptions-item>
-          <a-descriptions-item label="关联 MCP 服务" :span="2">
-            <a-space wrap>
-              <a-tag v-for="s in servicesBoundTo(selected)" :key="s.id" color="cyan" size="small">{{ s.name }}</a-tag>
-              <span v-if="!servicesBoundTo(selected).length" class="muted">未关联</span>
-              <a-link @click="emit('goto', 'services')">在 MCP 中心维护</a-link>
-            </a-space>
-          </a-descriptions-item>
-        </a-descriptions>
-
-        <div class="ds-table-head">
-          <h4>表 / 视图（数据集）</h4>
-          <a-button type="text" size="small" @click="goDatasets(selected.id)">去数据集 →</a-button>
-        </div>
-        <a-table :data="sourceDatasets" row-key="id" :pagination="{ pageSize: 8 }" hoverable>
+        <a-table :data="sourceDatasets" row-key="id" :pagination="{ pageSize: 8 }" hoverable :bordered="false">
           <template #columns>
-            <a-table-column title="显示名" data-index="display_name" :width="180" />
-            <a-table-column title="表名" :width="200">
-              <template #cell="{ record }"><span class="mono">{{ record.table_name }}</span></template>
-            </a-table-column>
-            <a-table-column title="类型" :width="90">
+            <a-table-column title="名称" data-index="display_name" />
+            <a-table-column title="备注">
               <template #cell="{ record }">
-                <a-tag :color="record.extra?.source_kind === 'view' ? 'purple' : 'arcoblue'" size="small">
-                  {{ record.extra?.source_kind === 'view' ? '视图' : '表' }}
-                </a-tag>
-              </template>
-            </a-table-column>
-            <a-table-column title="字段数" :width="90" align="right">
-              <template #cell="{ record }">{{ (record.columns || []).length }}</template>
-            </a-table-column>
-            <a-table-column title="估计行数" :width="110" align="right">
-              <template #cell="{ record }">{{ record.row_count_estimate?.toLocaleString?.() || '—' }}</template>
-            </a-table-column>
-            <a-table-column title="联动工具" :width="220">
-              <template #cell="{ record }">
-                <a-space v-if="linkedToolsOfDataset(store, record.id).length" wrap :size="4">
-                  <a-tag
-                    v-for="t in linkedToolsOfDataset(store, record.id)"
-                    :key="t.name"
-                    size="small"
-                    :color="t.dataset ? 'green' : (isReadControlled(t, record.id) ? 'arcoblue' : 'orange')"
-                    class="mono"
-                  >{{ t.dataset ? '发布' : (isReadControlled(t, record.id) ? '读取' : '读取·未受控') }} · {{ t.name }}</a-tag>
-                </a-space>
-                <span v-else class="muted">无</span>
-              </template>
-            </a-table-column>
-            <a-table-column title="说明">
-              <template #cell="{ record }">
-                <span class="muted">{{ record.description || '—' }}</span>
+                <span class="muted">{{ record.description || record.table_name || '—' }}</span>
               </template>
             </a-table-column>
           </template>
           <template #empty>
-            <a-empty>
-              <div>尚未同步 Schema</div>
-              <a-button v-if="isDbKind(selected.kind)" type="primary" size="small" style="margin-top: 8px" @click="onSync(selected)">同步 Schema</a-button>
+            <a-empty description="暂无数据表">
+              <a-button v-if="isDbKind(selected.kind)" type="primary" size="small" @click="onSync(selected)">同步 Schema</a-button>
             </a-empty>
           </template>
         </a-table>
-      </section>
-      <a-empty v-else class="ds-main" description="请选择左侧数据源" />
+        </section>
+        <a-empty v-else class="ds-main" description="请选择左侧数据源" />
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.ds-page .page-head { margin-bottom: 16px; }
+.ds-main-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.ds-create-bar {
+  width: 100%;
+  height: 36px;
+  border: none;
+  border-radius: 2px;
+  background: rgb(22, 100, 255);
+  color: #fff;
+  font-size: 14px;
+  line-height: 36px;
+  cursor: pointer;
+}
+.ds-create-bar:hover { background: rgb(64, 128, 255); }
 .ds-layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 280px 1fr;
   gap: 16px;
-  min-height: 520px;
+  min-height: 560px;
+  align-items: stretch;
 }
-.ds-side {
+.ds-side,
+.ds-main {
   border: 1px solid var(--color-border-2);
   border-radius: 8px;
-  background: var(--color-bg-2);
-  padding: 12px;
+  background: #fff;
+}
+.ds-side { min-height: 560px; }
+.ds-main { flex: 1; }
+.ds-side {
+  padding: 12px 8px 8px;
   overflow: auto;
 }
-.ds-group-title {
-  font-size: 12px;
-  color: var(--color-text-3);
-  margin: 8px 0 6px;
+.ds-side-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 10px;
+  font-size: 14px;
+  color: var(--color-text-1);
 }
+.ds-side-hd :deep(.arco-input-search) { width: 132px; }
 .ds-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   border: none;
   background: transparent;
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 8px 8px;
   cursor: pointer;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .ds-item:hover { background: var(--color-fill-2); }
-.ds-item.active { background: rgb(var(--primary-1)); }
-.ds-item-name { font-weight: 500; }
-.ds-main {
-  border: 1px solid var(--color-border-2);
-  border-radius: 8px;
-  background: var(--color-bg-2);
-  padding: 16px 18px;
+.ds-item.active { background: #e8f3ff; }
+.ds-item :deep(.db-ico) {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
 }
-.ds-main-head {
+.ds-item :deep(.db-ico svg) {
+  width: 18px;
+  height: 18px;
+}
+.ds-item-body {
+  min-width: 0;
+  flex: 1;
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ds-item-name {
+  font-size: 13px;
+  color: var(--color-text-1);
+  line-height: 20px;
+}
+.ds-item-meta {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-text-3);
+}
+.ds-item-ops {
+  display: none;
+  flex: none;
+  gap: 2px;
+}
+.ds-item:hover .ds-item-ops,
+.ds-item.active .ds-item-ops,
+.ds-item.ops-on .ds-item-ops,
+.ds-item:focus-within .ds-item-ops { display: inline-flex; }
+.ds-item-ops button {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--color-text-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ds-item-ops button:hover { background: rgba(255, 255, 255, 0.8); color: rgb(var(--primary-6)); }
+.ds-main { padding: 8px 16px 16px; }
+.ds-main-bar {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 14px;
+  min-height: 48px;
+  margin-bottom: 4px;
 }
-.ds-main-head h3 { margin: 0 0 4px; font-size: 18px; }
-.ds-table-head {
+.ds-tabs {
+  height: 32px;
+  padding: 0 12px;
+  line-height: 32px;
+  border-radius: 4px;
+  background: var(--color-fill-2);
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+.ds-toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin: 8px 0 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
-.ds-table-head h4 { margin: 0; font-size: 15px; }
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 @media (max-width: 960px) {
   .ds-layout { grid-template-columns: 1fr; }
+  .ds-main-bar { align-items: flex-start; flex-direction: column; }
 }
 </style>

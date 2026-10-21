@@ -255,12 +255,13 @@ export function checkSqlSpec({ sql, placeholders = [], columns = [], dialect = '
   }
   const names = parsed.columns || []
   if (names.length) {
-    names.forEach((name) => {
+    const missing = names.some((name) => {
       const col = columns.find((c) => c.column_name === name) || {}
       const cn = String(col.cn ?? col.semantic_hint ?? '').trim()
       const description = String(col.description ?? '').trim()
-      if (!cn || !description) errors.push(`列「${name}」需要填写中文名和说明，说明会进入 MCP 工具参数描述`)
+      return !cn || !description
     })
+    if (missing) errors.push('还有字段未配置')
   }
   const ph = validatePlaceholders(placeholders)
   errors.push(...ph.errors)

@@ -1,4 +1,16 @@
 html, body, #app { height: 100%; margin: 0; }
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c9cdd4;
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: #f2f3f5;
+}
+*::-webkit-scrollbar-corner { background: transparent; }
 body {
   --primary-6: 22, 100, 255;
   --primary-5: 51, 117, 255;
@@ -293,9 +305,12 @@ body {
 .app-body {
   flex: 1;
   min-height: 0;
-  height: calc(100vh - 56px);
   display: flex !important;
   flex-direction: row !important;
+}
+.app-shell.is-editor .app-body {
+  flex: 1;
+  min-height: 0;
 }
 .app-body > .app-sider {
   flex: 0 0 auto;
@@ -306,9 +321,6 @@ body {
   flex: 1;
   min-width: 0;
 }
-.app-shell.is-editor .app-body {
-  height: 100vh;
-}
 .app-topbar {
   height: 56px;
   flex-shrink: 0;
@@ -318,6 +330,79 @@ body {
   padding: 0 16px 0 20px;
   background: #f6f6fc;
 }
+.sys-notice {
+  position: fixed;
+  top: 56px;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #fff7e8;
+  border-bottom: 1px solid #ffe4ba;
+  box-shadow: 0 8px 20px rgba(210, 95, 0, 0.16);
+  color: #d25f00;
+}
+.app-shell.is-editor .sys-notice { top: 0; }
+.sys-notice-ico {
+  margin-top: 3px;
+  font-size: 16px;
+  color: #ff7d00;
+  flex: none;
+}
+.sys-notice-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sys-notice-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font-size: 13px;
+  line-height: 22px;
+  cursor: pointer;
+}
+.sys-notice-line:hover .sys-notice-ct { text-decoration: underline; }
+.sys-notice-lv {
+  flex: none;
+  font-weight: 600;
+}
+.sys-notice-obj {
+  flex: none;
+  font-weight: 500;
+  color: #1d2129;
+}
+.sys-notice-ct {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sys-notice-x {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #d25f00;
+  cursor: pointer;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sys-notice-x:hover { background: rgba(255, 125, 0, 0.12); }
 .topbar-brand {
   display: inline-flex;
   align-items: center;

@@ -106,8 +106,7 @@
     <h2>没有 LIMIT 只提示</h2>
     <p>SQL 里可以不写行数限制。没有它时，规范检查给一条提示，仍然可以保存。</p>
     <ul>
-      <li>MySQL 写 <code>LIMIT 100</code>。</li>
-      <li>Oracle 写 <code>FETCH FIRST 100 ROWS ONLY</code>，不要写 <code>LIMIT</code>。数据源上会标出类型。</li>
+      <li>MySQL 和 TiDB 都写 <code>LIMIT 100</code>。数据源上会标出类型。</li>
       <li>编辑页预览最多 100 行。</li>
       <li>发布成工具后，默认最多 500 行，上限 5000。</li>
     </ul>

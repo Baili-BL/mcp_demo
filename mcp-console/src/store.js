@@ -167,7 +167,7 @@ export const store = reactive({
     { id: 'src-edb', name: 'EDB 指标库', code: 'edb', kind: 'mysql', envKey: 'METRIC_DSN', host: 'rm-metric.mysql.rds.aliyuncs.com', port: 3306, database: 'metric', user: 'big_data_read', passwordSet: true, accessMode: 'read', vpcMode: true, vpcId: 'vpc-metric-demo', readonly: true, timeout: 10, metricSource: null, status: 'connected', latency: 44, lastCheck: '2026-10-15 13:18:15', lastError: '', enabled: true, note: 'edb_info / edb_series_data', svcIds: ['mkt'] },
     { id: 'src-crm', name: 'CRM 系统', code: 'crm', kind: 'mysql', envKey: 'CRM_DSN', host: 'rm-crm.mysql.rds.aliyuncs.com', port: 3306, database: 'crm', user: 'crm_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 8, metricSource: null, status: 'connected', latency: 72, lastCheck: '2026-10-15 13:12:40', lastError: '', enabled: true, note: '客户与商机，不与数仓混连', svcIds: ['anl'] },
     { id: 'src-dw', name: '数仓', code: 'warehouse', kind: 'mysql', envKey: 'DW_DSN', host: 'rm-dw.mysql.rds.aliyuncs.com', port: 3306, database: 'ads', user: 'dw_read', passwordSet: true, accessMode: 'read', vpcMode: true, vpcId: 'vpc-dw-demo', readonly: true, timeout: 30, metricSource: null, status: 'connected', latency: 186, lastCheck: '2026-10-15 13:11:18', lastError: '', enabled: true, note: '分析数据集，独立超时', svcIds: ['anl'] },
-    { id: 'src-ora-risk', name: '风控仓单库', code: 'risk_wh', kind: 'oracle', envKey: 'RISK_DSN', host: 'ora-risk.example.com', port: 1521, database: '', connectMode: 'service', serviceName: 'RISKDB', sid: '', schema: 'RISK', user: 'risk_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 15, metricSource: null, status: 'connected', latency: 92, lastCheck: '2026-10-15 13:18:20', lastError: '', enabled: true, note: '仓单按 schema 授权，视图已去掉货主', svcIds: ['mkt'] },
+    { id: 'src-ora-risk', name: '风控仓单库', code: 'risk_wh', kind: 'tidb', envKey: 'TIDB_DSN', host: 'tidb-risk.example.com', port: 4000, database: 'risk', user: 'risk_read', passwordSet: true, accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 15, metricSource: null, status: 'connected', latency: 92, lastCheck: '2026-10-15 13:18:20', lastError: '', enabled: true, note: '仓单按库授权，视图已去掉货主', svcIds: ['mkt'] },
     { id: 'src-customs', name: '海关开放接口', code: 'customs', kind: 'http', envKey: 'CUSTOMS_BASE_URL', host: '', port: 443, database: '', user: '', passwordSet: false, baseUrl: 'https://api.customs.example/v1', accessMode: 'read', vpcMode: false, vpcId: '', readonly: true, timeout: 8, metricSource: null, status: 'failed', latency: null, lastCheck: '2026-10-15 09:47:11', lastError: '上游网关 502', enabled: true, note: '进出口与发运，禁止并进指标库连接池', svcIds: ['fund'] },
   ],
   hubTab: 'services',
@@ -553,7 +553,7 @@ syncServiceSources()
 
 export const SOURCE_KINDS = [
   { value: 'mysql', label: 'MySQL', desc: '对齐 vibeBI：服务器、端口、库名、用户名、密码；测连后同步 Schema 生成数据集。' },
-  { value: 'oracle', label: 'Oracle', desc: '后续支持。主机、端口、Service Name 或 SID，再加 schema。' },
+  { value: 'tidb', label: 'TiDB', desc: '兼容 MySQL 协议。主机、端口、库名、用户名、密码；测连后同步 Schema。' },
   { value: 'http', label: 'HTTP 接口', desc: '上游开放接口。与数据库分开计超时，失败信息带上游名。' },
 ]
 export const ACCESS_MODES = [
@@ -570,7 +570,7 @@ export const DATABASE_TYPES = [
   { type: 'sqlserver', label: 'SQL Server', port: 1433, envKey: 'MSSQL_DSN', enabled: true },
   { type: 'clickhouse', label: 'ClickHouse', port: 8123, envKey: 'CLICKHOUSE_DSN', enabled: true },
   { type: 'doris', label: 'Apache Doris', port: 9030, envKey: 'DORIS_DSN', enabled: true },
-  { type: 'oracle', label: 'Oracle', port: 1521, envKey: 'ORACLE_DSN', enabled: true },
+  { type: 'tidb', label: 'TiDB', port: 4000, envKey: 'TIDB_DSN', enabled: true },
   { type: 'hive', label: 'Hive', port: 10000, envKey: 'HIVE_DSN', enabled: true },
   { type: 'mongodb', label: 'MongoDB', port: 27017, envKey: 'MONGO_URI', enabled: true },
   { type: 'elasticsearch', label: 'Elasticsearch', port: 9200, envKey: 'ES_URL', enabled: true },

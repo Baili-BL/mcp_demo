@@ -11,6 +11,8 @@ import { formatSql as formatSqlText } from '../sqlFormat'
 import { checkSqlSpec, parseOutputColumns, suggestColumnDef, tableAliases } from '../sqlSpec'
 import { generateSql } from '../sqlGen'
 import SqlEditor from '../components/SqlEditor.vue'
+import DbTypeIcon from '../components/DbTypeIcon.vue'
+import MysqlFlag from '../components/MysqlFlag.vue'
 import SqlIcon1 from '../components/icons/sql/Icon1.vue'
 import SqlIcon2 from '../components/icons/sql/Icon2.vue'
 import SqlIcon4 from '../components/icons/sql/Icon4.vue'
@@ -49,7 +51,11 @@ const emit = defineEmits(['goto', 'close', 'done', 'open-sql'])
 const name = ref(props.createMode === 'sql' ? '未命名SQL' : '未命名')
 const step = ref(props.createMode === 'sql' ? 'sql' : 'canvas')
 const enteredAsSql = ref(props.createMode === 'sql')
-const sourceId = ref(store.sources.find((s) => isDbKind(s.kind))?.id || '')
+const sourceId = ref(
+  (store.datasetFlt.sourceId && store.sources.some((s) => s.id === store.datasetFlt.sourceId && isDbKind(s.kind))
+    ? store.datasetFlt.sourceId
+    : '') || store.sources.find((s) => isDbKind(s.kind))?.id || '',
+)
 const tableQuery = ref('')
 const tableSearchOpen = ref(false)
 const tableSearchRef = ref(null)
@@ -660,23 +666,11 @@ function insertTableSql(table) {
 }
 
 const sqlDialect = computed(() => store.sources.find((s) => s.id === sourceId.value)?.kind === 'oracle' ? 'oracle' : 'mysql')
-const DB_KIND_LABEL = {
-  mysql: 'MySQL',
-  oracle: 'Oracle',
-  postgresql: 'PostgreSQL',
-  sqlserver: 'SQL Server',
-  clickhouse: 'ClickHouse',
-  doris: 'Doris',
-  hive: 'Hive',
-}
-function sourceKindLabel(kind) {
-  return DB_KIND_LABEL[kind] || kind || ''
-}
-const dialectHint = computed(() => (
-  sqlDialect.value === 'oracle'
-    ? '当前是 Oracle。限制行数写 FETCH FIRST 100 ROWS ONLY，不要写 LIMIT。'
-    : '当前是 MySQL。限制行数写 LIMIT。'
-))
+const currentKind = computed(() => store.sources.find((s) => s.id === sourceId.value)?.kind || 'mysql')
+const dialectHint = computed(() => {
+  if (currentKind.value === 'tidb') return '当前是 TiDB，语法与 MySQL 相同。限制行数写 LIMIT。'
+  return '当前是 MySQL。限制行数写 LIMIT。'
+})
 const sqlPlaceholder = computed(() => (
   sqlDialect.value === 'oracle'
     ? 'SELECT index_code, data_time FROM table_name FETCH FIRST 100 ROWS ONLY'
@@ -837,7 +831,7 @@ function insertFromDraft(p) {
 }
 
 function execSpecErrors(errors) {
-  return (errors || []).filter((err) => !/需要填写中文名和说明/.test(err))
+  return (errors || []).filter((err) => err !== '还有字段未配置')
 }
 function specColumns() {
   return sqlColumnDefs.value.map((c) => ({
@@ -1103,18 +1097,19 @@ const finishLabel = computed(() => {
           </div>
           <div class="side-label">选择数据源</div>
           <label class="source-pick">
-            <a-select v-model="sourceId" allow-search :bordered="false" placeholder="请选择数据源" @change="selectSource">
-              <template #prefix><icon-storage /></template>
+            <a-select v-model="sourceId" allow-search :bordered="false" placeholder="请选择数据源" :trigger-props="{ contentClass: 'src-kind-drop' }" @change="selectSource">
+              <template #prefix>
+                <MysqlFlag v-if="currentKind === 'mysql'" />
+                <DbTypeIcon v-else :type="currentKind" />
+              </template>
               <template #label="{ data }">
-                <span class="src-selected">
-                  <span class="ellipsis">{{ data?.label }}</span>
-                  <span class="src-kind" :data-kind="sqlDialect">{{ sourceKindLabel(sqlDialect) }}</span>
-                </span>
+                <span class="ellipsis">{{ data?.label }}</span>
               </template>
               <a-option v-for="s in dbSources" :key="s.id" :value="s.id" :label="s.name">
                 <span class="src-opt">
+                  <MysqlFlag v-if="s.kind === 'mysql'" />
+                  <DbTypeIcon v-else :type="s.kind" />
                   <span class="ellipsis">{{ s.name }}</span>
-                  <span class="src-kind" :data-kind="s.kind">{{ sourceKindLabel(s.kind) }}</span>
                 </span>
               </a-option>
             </a-select>
@@ -1285,18 +1280,19 @@ const finishLabel = computed(() => {
           </div>
           <div class="side-label">选择数据源</div>
           <label class="source-pick">
-            <a-select v-model="sourceId" allow-search :bordered="false" placeholder="请选择数据源" @change="selectSource">
-              <template #prefix><icon-storage /></template>
+            <a-select v-model="sourceId" allow-search :bordered="false" placeholder="请选择数据源" :trigger-props="{ contentClass: 'src-kind-drop' }" @change="selectSource">
+              <template #prefix>
+                <MysqlFlag v-if="currentKind === 'mysql'" />
+                <DbTypeIcon v-else :type="currentKind" />
+              </template>
               <template #label="{ data }">
-                <span class="src-selected">
-                  <span class="ellipsis">{{ data?.label }}</span>
-                  <span class="src-kind" :data-kind="sqlDialect">{{ sourceKindLabel(sqlDialect) }}</span>
-                </span>
+                <span class="ellipsis">{{ data?.label }}</span>
               </template>
               <a-option v-for="s in dbSources" :key="s.id" :value="s.id" :label="s.name">
                 <span class="src-opt">
+                  <MysqlFlag v-if="s.kind === 'mysql'" />
+                  <DbTypeIcon v-else :type="s.kind" />
                   <span class="ellipsis">{{ s.name }}</span>
-                  <span class="src-kind" :data-kind="s.kind">{{ sourceKindLabel(s.kind) }}</span>
                 </span>
               </a-option>
             </a-select>
@@ -1381,7 +1377,7 @@ const finishLabel = computed(() => {
               <div v-for="warn in specResult.warnings" :key="warn" class="spec-line warn">{{ warn }}</div>
             </div>
             <div v-if="fieldCfg.total" class="spec-toolbar">
-              <span>字段配置 {{ fieldCfg.done }}/{{ fieldCfg.total }}。未配置的列还缺中文名或说明。</span>
+              <span>字段配置 {{ fieldCfg.done }}/{{ fieldCfg.total }}</span>
               <button type="button" class="sql-text-btn" @click="openFieldConfig">去配置字段</button>
             </div>
           </div>
@@ -1555,7 +1551,7 @@ const finishLabel = computed(() => {
     <a-modal v-model:visible="helpOpen" title="常见问题" :width="480" unmount-on-close :footer="false">
       <ul class="sql-help">
         <li>SQL 数据集会发布成 MCP 工具，只允许一条只读 SELECT。禁止 <span class="mono">SELECT *</span>，每个输出列都要填写中文名和说明。</li>
-        <li>点击左侧数据表会插入该表的明确列。MySQL 用 <span class="mono">LIMIT 100</span>，Oracle 用 <span class="mono">FETCH FIRST 100 ROWS ONLY</span>，数据源名称旁会标出类型。</li>
+        <li>点击左侧数据表会插入该表的明确列。MySQL 和 TiDB 都用 <span class="mono">LIMIT 100</span>，数据源名称旁会标出类型。</li>
         <li>「AI 生成 SQL」按当前数据源里已同步的表和字段注释起草 SELECT。写入编辑器后还可以改。</li>
         <li>
           支持值 <span class="mono">{{ "'$val{name}'" }}</span>、表达式 <span class="mono">{{ '$expr{字段:name}' }}</span>、条件、加速、标签、系统六类占位符，在「占位符管理」里设置变量类型和默认值。用在 SELECT 里的占位符必须设置全局默认值。
@@ -2211,28 +2207,30 @@ const finishLabel = computed(() => {
 }
 .source-pick :deep(.arco-select-view-value) { display: flex; width: 100%; }
 .source-pick :deep(.arco-select-view-prefix) {
-  padding-right: 8px;
-  color: rgba(0, 0, 0, 0.65);
+  padding-right: 6px;
 }
-.src-opt, .src-selected {
+.src-opt {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  width: 100%;
   min-width: 0;
 }
-.src-kind {
+.source-pick :deep(.db-ico),
+.src-opt :deep(.db-ico) {
+  width: 16px;
+  height: 16px;
+  margin: 0;
   flex: none;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: #e8f3ff;
-  color: #2e74ff;
-  font-size: 11px;
-  line-height: 18px;
 }
-.src-kind[data-kind="oracle"] { background: #fff3e8; color: #d9480f; }
+.source-pick :deep(.db-ico svg),
+.src-opt :deep(.db-ico svg) {
+  width: 16px;
+  height: 16px;
+}
+:global(.src-kind-drop .arco-select-option-selected) {
+  background: #eef3ff;
+  color: rgba(0, 0, 0, 0.85);
+}
 .src-dialect {
   margin: 0 12px 8px;
   font-size: 12px;
